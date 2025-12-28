@@ -9,7 +9,6 @@ export async function middleware(request: NextRequest) {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
-  // Skip auth check if env vars missing (will fail elsewhere with better error)
   if (!supabaseUrl || !supabaseAnonKey) {
     return supabaseResponse;
   }
@@ -34,32 +33,11 @@ export async function middleware(request: NextRequest) {
       },
     });
 
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-
-    const pathname = request.nextUrl.pathname;
-    const isAuthRoute = pathname.startsWith("/login") || pathname.startsWith("/signup");
-    const isApiRoute = pathname.startsWith("/api");
-    const isRootRoute = pathname === "/";
-
-    // Redirect unauthenticated users to login (except public routes)
-    if (!user && !isAuthRoute && !isApiRoute && !isRootRoute) {
-      const url = request.nextUrl.clone();
-      url.pathname = "/login";
-      return NextResponse.redirect(url);
-    }
-
-    // Redirect authenticated users away from auth pages
-    if (user && isAuthRoute) {
-      const url = request.nextUrl.clone();
-      url.pathname = "/dashboard";
-      return NextResponse.redirect(url);
-    }
+    // Just refresh the session - redirects happen in layouts
+    await supabase.auth.getUser();
 
     return supabaseResponse;
   } catch {
-    // On any error, allow request through (auth will be checked in layouts)
     return supabaseResponse;
   }
 }
