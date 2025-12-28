@@ -366,3 +366,86 @@ scripts/
 - Create outline selection UI
 - Test full pipeline end-to-end
 - Deploy Edge Functions to Supabase
+
+---
+
+## [2024-12-29 - Session] Brand Guidelines System
+
+### What I Attempted
+- Create database-driven brand guidelines system
+- Replace hardcoded LEJ brand guidelines with configurable database records
+- Add per-prompt guideline defaults in Prompt Manager
+- Add runtime guideline overrides on generation pages
+- Create full CRUD for guidelines in Settings
+
+### What Happened
+- Created `brand_guidelines` table with RLS policies
+- Created `prompt_guidelines` junction table for per-prompt defaults
+- Created Next.js utility `src/lib/supabase/guidelines.ts`
+- Created Edge Function utility `supabase/functions/_shared/guidelines.ts`
+- Created `GuidelineToggle` component for runtime overrides
+- Created `GuidelinesManager` component for Settings page CRUD
+- Updated `generate-image-prompt` Edge Function to use database guidelines
+- Added Guidelines tab to Prompt Manager for setting defaults
+
+### Files Created
+```
+supabase/migrations/
+└── 20241229000001_brand_guidelines.sql  # Schema + RLS + seed data
+
+src/lib/supabase/
+└── guidelines.ts                         # Loading/saving guidelines
+
+supabase/functions/_shared/
+└── guidelines.ts                         # Edge Function guidelines utility
+
+src/components/
+├── guideline-toggle.tsx                  # Runtime override checkboxes
+└── guidelines-manager.tsx                # Full CRUD for Settings
+```
+
+### Files Modified
+```
+src/app/(dashboard)/outputs/page.tsx      # Added GuidelineToggle to Images tab
+src/app/(dashboard)/settings/page.tsx     # Added GuidelinesManager
+src/app/(dashboard)/prompts/page.tsx      # Added Guidelines tab to editor
+supabase/functions/generate-image-prompt/index.ts  # Use DB guidelines
+```
+
+### Database Schema
+
+**brand_guidelines:**
+- `id`, `user_id`, `category`, `slug`, `name`, `content`, `is_active`, `sort_order`
+- Categories: `image`, `voice` (extensible)
+- RLS: Users can only access their own guidelines
+
+**prompt_guidelines:**
+- `id`, `prompt_set_id`, `guideline_id`, `is_default`
+- Junction table linking prompts to their default guidelines
+
+### Template Variable Convention
+- Category `image` → Variable `{{image_guidelines}}`
+- Category `voice` → Variable `{{voice_guidelines}}`
+- All active guidelines in a category are concatenated when interpolated
+
+### Default Image Guidelines Seeded
+| Slug | Name | Content |
+|------|------|---------|
+| `lej_cinematic` | Cinematic Realism | Hyper-realistic, photorealistic - should look like a frame from a high-budget movie |
+| `lej_anti_corporate` | Anti-Corporate | Avoid blazers, suits, offices, shared workspaces. Prefer influencer/creator aesthetic. |
+| `lej_uniform` | LEJ Uniform | Characters wear fitted crop tops with "LEJ" in bold sans-serif. Black/white or grey/black. |
+| `lej_diversity` | Diverse Representation | Prefer female protagonists. Weather-appropriate real clothing. |
+| `lej_no_generic` | No Generic Imagery | No clip art, no cheesy illustrations, no glowing brains, no stock photo poses. |
+
+### Lessons Learned
+- Junction table pattern works well for many-to-many relationships with metadata (is_default flag)
+- Auto-seeding defaults on first load provides good UX for new users
+- Template variable naming convention (`{{category_guidelines}}`) allows auto-discovery
+- Separating "defaults per prompt" from "runtime overrides" gives granular control
+
+### Architecture Flow
+1. User creates guidelines in Settings (stored in `brand_guidelines`)
+2. Admin sets defaults per prompt in Prompt Manager (stored in `prompt_guidelines`)
+3. At generation time, user can override which guidelines are active (passed to Edge Function)
+4. Edge Function loads guidelines, applies overrides, builds template variables
+5. Variables interpolated into prompt before AI call

@@ -27,6 +27,7 @@ import {
   RotateCcw,
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
+import { GuidelinesManager } from "@/components/guidelines-manager";
 
 interface AppSetting {
   id: string;
@@ -267,6 +268,9 @@ export default function SettingsPage() {
           </p>
         </div>
       )}
+
+      {/* Brand Guidelines */}
+      <GuidelinesManager className="mb-6" />
 
       <div className="space-y-4">
         {Object.entries(settings).map(([category, categorySettings]) => (

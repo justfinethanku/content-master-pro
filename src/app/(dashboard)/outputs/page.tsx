@@ -20,6 +20,7 @@ import {
   Sparkles,
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
+import { GuidelineToggle, useGuidelineOverrides } from "@/components/guideline-toggle";
 
 interface DraftData {
   title: string;
@@ -108,6 +109,9 @@ export default function OutputsPage() {
   const [generatingImageIndex, setGeneratingImageIndex] = useState<number | null>(null);
 
   const [error, setError] = useState<string | null>(null);
+
+  // Guideline overrides for image generation
+  const { overrides: guidelineOverrides, handleChange: handleGuidelineChange } = useGuidelineOverrides();
 
   // Load draft from sessionStorage on mount
   useEffect(() => {
@@ -240,6 +244,7 @@ export default function OutputsPage() {
             title: draftData.title,
             draft_excerpt: draftData.content.substring(0, 1000),
             image_type: imageType,
+            guideline_overrides: Object.keys(guidelineOverrides).length > 0 ? guidelineOverrides : undefined,
           }),
         }
       );
@@ -257,7 +262,7 @@ export default function OutputsPage() {
     } finally {
       setIsGeneratingImages(false);
     }
-  }, [draftData, imageType]);
+  }, [draftData, imageType, guidelineOverrides]);
 
   const generateImage = useCallback(async (promptIndex: number, prompt: ImagePrompt) => {
     setGeneratingImageIndex(promptIndex);
@@ -654,6 +659,12 @@ export default function OutputsPage() {
 
         {/* Images Tab */}
         <TabsContent value="images" className="space-y-4">
+          {/* Guideline Toggle */}
+          <GuidelineToggle
+            categories={["image"]}
+            onChange={handleGuidelineChange}
+          />
+
           <Card>
             <CardHeader className="flex flex-row items-center justify-between space-y-0">
               <div>

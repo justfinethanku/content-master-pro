@@ -2,7 +2,7 @@
  * Generate Image Prompt Edge Function
  *
  * Creates optimized image prompts for Gemini/DALL-E/Midjourney.
- * Follows LEJ brand guidelines for visual consistency.
+ * Uses database-driven brand guidelines for visual consistency.
  */
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
@@ -10,6 +10,7 @@ import { corsHeaders, handleCors, jsonResponse, errorResponse } from "../_shared
 import { getSupabaseClient, getSupabaseAdmin, getAuthenticatedUser } from "../_shared/supabase.ts";
 import { loadActivePromptConfig, buildPrompt } from "../_shared/prompts.ts";
 import { callAI, parseJSONResponse } from "../_shared/ai.ts";
+import { buildGuidelineVariables, seedDefaultGuidelines } from "../_shared/guidelines.ts";
 
 interface ImagePromptRequest {
   title: string;
@@ -18,6 +19,7 @@ interface ImagePromptRequest {
   image_type: "substack_header" | "youtube_thumbnail" | "social_share" | "infographic";
   style_preference?: string;
   session_id?: string;
+  guideline_overrides?: Record<string, boolean>;
 }
 
 interface ImagePrompt {
@@ -58,6 +60,7 @@ serve(async (req: Request) => {
       image_type,
       style_preference,
       session_id,
+      guideline_overrides,
     } = (await req.json()) as ImagePromptRequest;
 
     if (!title || title.trim().length === 0) {
@@ -66,6 +69,17 @@ serve(async (req: Request) => {
 
     // Load prompt configuration
     const promptConfig = await loadActivePromptConfig("image_prompt_generator");
+
+    // Seed default guidelines for user if they don't have any
+    await seedDefaultGuidelines(user.id);
+
+    // Load brand guidelines from database
+    const guidelineVars = await buildGuidelineVariables(
+      promptConfig.promptSetId,
+      user.id,
+      guideline_overrides
+    );
+    const imageGuidelines = guidelineVars.image_guidelines || "";
 
     // Image type specifications
     const imageSpecs = {
@@ -96,7 +110,13 @@ serve(async (req: Request) => {
     // Build the system prompt
     const systemPrompt = buildPrompt(promptConfig, {});
 
-    // Build user message
+    // Build user message with dynamic guidelines
+    const brandStyleSection = imageGuidelines
+      ? `BRAND STYLE GUIDELINES:\n${imageGuidelines}`
+      : `BRAND STYLE (default):
+- Cinematic realism with clean, modern aesthetics
+- Conceptual/metaphorical imagery preferred over literal illustrations`;
+
     const userMessage = `
 Title: ${title}
 ${description ? `Description: ${description}` : ""}
@@ -109,13 +129,7 @@ ${style_preference ? `Style Preference: ${style_preference}` : ""}
 
 Create 3 distinct image prompts for this content. Follow these guidelines:
 
-BRAND STYLE (LEJ - Limited Edition Jonathan):
-- Cinematic realism with clean, modern aesthetics
-- Anti-corporate vibe - authentic, not stock-photo-ish
-- Diverse representation (prefer female protagonists when using people)
-- Bold colors with purpose, not generic gradients
-- Conceptual/metaphorical imagery preferred over literal illustrations
-- No clip art, no cheesy illustrations, no generic tech imagery
+${brandStyleSection}
 
 For each prompt:
 1. Be specific about composition, lighting, and mood

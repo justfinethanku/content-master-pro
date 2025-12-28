@@ -1,25 +1,34 @@
 import { NextRequest } from "next/server";
 import { streamText } from "ai";
-import { createOpenAI } from "@ai-sdk/openai";
+import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
 import { searchPosts, type SearchResult } from "@/lib/pinecone/search";
+import {
+  loadActivePromptConfig,
+  interpolateTemplate,
+} from "@/lib/supabase/prompts";
+import { logAICall } from "@/lib/supabase/ai-logging";
 
 // Create Vercel AI Gateway client (OpenAI-compatible)
-const gateway = createOpenAI({
+// Uses Chat Completions API, not the OpenAI Responses API
+const gateway = createOpenAICompatible({
+  name: "vercel-ai-gateway",
   apiKey: process.env.VERCEL_AI_GATEWAY_API_KEY!,
   baseURL: "https://ai-gateway.vercel.sh/v1",
 });
 
-interface ChatMessage {
-  role: "user" | "assistant";
-  content: string;
-}
-
 interface ChatRequestBody {
-  messages: ChatMessage[];
+  messages: Array<{
+    id?: string;
+    role: "user" | "assistant";
+    content?: string;
+    parts?: Array<{ type: string; text?: string }>;
+  }>;
   sources?: ("jon" | "nate")[];
 }
 
 export async function POST(request: NextRequest) {
+  const startTime = Date.now();
+
   try {
     const body = (await request.json()) as ChatRequestBody;
     const { messages, sources = ["jon", "nate"] } = body;
@@ -31,6 +40,9 @@ export async function POST(request: NextRequest) {
       });
     }
 
+    // Load prompt config from database (Rule 2: No hardcoded model IDs)
+    const promptConfig = await loadActivePromptConfig("search_chat");
+
     // Get the latest user message for search context
     const latestUserMessage = messages.filter((m) => m.role === "user").pop();
     if (!latestUserMessage) {
@@ -40,9 +52,12 @@ export async function POST(request: NextRequest) {
       });
     }
 
+    // Extract text from message (handles both content and parts formats)
+    const searchQuery = getTextFromMessage(latestUserMessage);
+
     // Search for relevant posts to use as context
     const searchResults = await searchPosts({
-      query: latestUserMessage.content,
+      query: searchQuery,
       sources,
       topK: 5,
     });
@@ -50,32 +65,36 @@ export async function POST(request: NextRequest) {
     // Build context from search results
     const context = buildContext(searchResults);
 
-    // Build the system prompt with RAG context
-    const systemPrompt = `You are a helpful assistant with access to a knowledge base of newsletter posts from Jon Edwards and Nate Kadlac.
+    // Build system prompt with RAG context using database template
+    const systemPrompt = interpolateTemplate(promptConfig.promptContent, {
+      context,
+    });
 
-Your job is to answer questions using the provided context from their posts. When you reference information from the posts, cite them by mentioning the author and post title.
+    // Convert messages to format for streamText
+    const coreMessages = messages.map((m) => ({
+      role: m.role as "user" | "assistant",
+      content: getTextFromMessage(m),
+    }));
 
-Here are the relevant posts from the knowledge base:
-
-${context}
-
-Guidelines:
-- Answer based on the context provided above
-- If you reference a specific post, mention the author and title
-- If the context doesn't contain relevant information, say so honestly
-- Be conversational and helpful
-- Keep responses focused and concise`;
-
-    // Stream the response using Vercel AI SDK
+    // Stream response with proper message conversion (AI SDK v6 format)
     const result = streamText({
-      model: gateway("anthropic/claude-sonnet-4-5"),
+      model: gateway(promptConfig.modelId),
       system: systemPrompt,
-      messages: messages.map((m) => ({
-        role: m.role,
-        content: m.content,
-      })),
-      maxOutputTokens: 1024,
-      temperature: 0.7,
+      messages: coreMessages,
+      maxOutputTokens: promptConfig.apiConfig.max_tokens || 1024,
+      temperature: promptConfig.apiConfig.temperature || 0.7,
+      onFinish: async ({ text, usage }) => {
+        // Log AI call (Rule 13: AI Call Logging)
+        await logAICall({
+          promptSetSlug: "search_chat",
+          fullPrompt: systemPrompt,
+          fullResponse: text,
+          modelId: promptConfig.modelId,
+          tokensIn: usage?.inputTokens,
+          tokensOut: usage?.outputTokens,
+          durationMs: Date.now() - startTime,
+        });
+      },
     });
 
     // Return the streaming response
@@ -90,6 +109,31 @@ Guidelines:
       }
     );
   }
+}
+
+/**
+ * Extract text from a message that may have either:
+ * - content: string (old format)
+ * - parts: Array<{ type: 'text', text: string }> (AI SDK v6 format)
+ */
+function getTextFromMessage(message: {
+  content?: string;
+  parts?: Array<{ type: string; text?: string }>;
+}): string {
+  // Try content first (simpler format)
+  if (message.content) {
+    return message.content;
+  }
+
+  // Handle parts array (AI SDK v6 format)
+  if (message.parts) {
+    return message.parts
+      .filter((p) => p.type === "text" && p.text)
+      .map((p) => p.text!)
+      .join("");
+  }
+
+  return "";
 }
 
 function buildContext(results: SearchResult[]): string {

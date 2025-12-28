@@ -33,8 +33,12 @@ import {
   Loader2,
   Check,
   AlertCircle,
+  Settings2,
 } from "lucide-react";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Checkbox } from "@/components/ui/checkbox";
 import { createClient } from "@/lib/supabase/client";
+import type { BrandGuideline } from "@/lib/supabase/guidelines";
 
 interface PromptSet {
   id: string;
@@ -90,6 +94,11 @@ export default function PromptsPage() {
   const [showPreview, setShowPreview] = useState(false);
   const [previewVariables, setPreviewVariables] = useState<Record<string, string>>({});
 
+  // Guidelines
+  const [guidelines, setGuidelines] = useState<BrandGuideline[]>([]);
+  const [guidelineDefaults, setGuidelineDefaults] = useState<Set<string>>(new Set());
+  const [editorTab, setEditorTab] = useState<"prompt" | "guidelines">("prompt");
+
   const supabase = createClient();
 
   const loadPrompts = useCallback(async () => {
@@ -132,6 +141,16 @@ export default function PromptsPage() {
 
       if (modelsError) throw modelsError;
       setModels(aiModels || []);
+
+      // Load brand guidelines
+      const { data: guidelinesData } = await supabase
+        .from("brand_guidelines")
+        .select("*")
+        .eq("is_active", true)
+        .order("category")
+        .order("sort_order");
+
+      setGuidelines(guidelinesData || []);
     } catch (err) {
       console.error("Failed to load prompts:", err);
       setError(err instanceof Error ? err.message : "Failed to load prompts");
@@ -151,6 +170,7 @@ export default function PromptsPage() {
     setEditorTemperature(prompt.current_version?.api_config?.temperature || 0.7);
     setEditorMaxTokens(prompt.current_version?.api_config?.max_tokens || 4096);
     setSaveSuccess(false);
+    setEditorTab("prompt");
 
     // Load version history
     const { data: versionHistory } = await supabase
@@ -161,12 +181,61 @@ export default function PromptsPage() {
       .limit(10);
 
     setVersions(versionHistory || []);
+
+    // Load guideline defaults for this prompt
+    const { data: defaults } = await supabase
+      .from("prompt_guidelines")
+      .select("guideline_id")
+      .eq("prompt_set_id", prompt.id)
+      .eq("is_default", true);
+
+    setGuidelineDefaults(new Set((defaults || []).map((d) => d.guideline_id)));
   };
 
   const closeEditor = () => {
     setEditingPrompt(null);
     setShowVersions(false);
     setShowPreview(false);
+    setGuidelineDefaults(new Set());
+    setEditorTab("prompt");
+  };
+
+  const toggleGuidelineDefault = (guidelineId: string) => {
+    setGuidelineDefaults((prev) => {
+      const next = new Set(prev);
+      if (next.has(guidelineId)) {
+        next.delete(guidelineId);
+      } else {
+        next.add(guidelineId);
+      }
+      return next;
+    });
+  };
+
+  const saveGuidelineDefaults = async () => {
+    if (!editingPrompt) return;
+
+    try {
+      // Delete existing defaults
+      await supabase
+        .from("prompt_guidelines")
+        .delete()
+        .eq("prompt_set_id", editingPrompt.id);
+
+      // Insert new defaults
+      if (guidelineDefaults.size > 0) {
+        await supabase.from("prompt_guidelines").insert(
+          Array.from(guidelineDefaults).map((guidelineId) => ({
+            prompt_set_id: editingPrompt.id,
+            guideline_id: guidelineId,
+            is_default: true,
+          }))
+        );
+      }
+    } catch (err) {
+      console.error("Failed to save guideline defaults:", err);
+      setError(err instanceof Error ? err.message : "Failed to save guideline defaults");
+    }
   };
 
   const savePrompt = async () => {
@@ -231,6 +300,9 @@ export default function PromptsPage() {
           .update({ status: "archived" })
           .in("id", toArchive);
       }
+
+      // Save guideline defaults
+      await saveGuidelineDefaults();
 
       setSaveSuccess(true);
       await loadPrompts();
@@ -366,102 +438,198 @@ export default function PromptsPage() {
             <DialogDescription>{editingPrompt?.description}</DialogDescription>
           </DialogHeader>
 
-          <div className="flex-1 overflow-hidden flex gap-4">
-            {/* Main Editor */}
-            <div className="flex-1 flex flex-col gap-4">
-              {/* Model and Config Row */}
-              <div className="grid grid-cols-3 gap-4">
-                <div className="space-y-2">
-                  <Label>Model</Label>
-                  <Select value={editorModelId} onValueChange={setEditorModelId}>
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select model" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {models.map((model) => (
-                        <SelectItem key={model.id} value={model.id}>
-                          {model.display_name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+          <Tabs value={editorTab} onValueChange={(v) => setEditorTab(v as "prompt" | "guidelines")} className="flex-1 overflow-hidden flex flex-col">
+            <TabsList className="w-fit">
+              <TabsTrigger value="prompt" className="flex items-center gap-2">
+                <FileText className="h-4 w-4" />
+                Prompt
+              </TabsTrigger>
+              <TabsTrigger value="guidelines" className="flex items-center gap-2">
+                <Settings2 className="h-4 w-4" />
+                Guidelines
+                {guidelineDefaults.size > 0 && (
+                  <Badge variant="secondary" className="ml-1">
+                    {guidelineDefaults.size}
+                  </Badge>
+                )}
+              </TabsTrigger>
+            </TabsList>
+
+            <div className="flex-1 overflow-hidden flex gap-4 mt-4">
+              <TabsContent value="prompt" className="flex-1 flex flex-col gap-4 mt-0 data-[state=inactive]:hidden">
+                {/* Model and Config Row */}
+                <div className="grid grid-cols-3 gap-4">
+                  <div className="space-y-2">
+                    <Label>Model</Label>
+                    <Select value={editorModelId} onValueChange={setEditorModelId}>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select model" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {models.map((model) => (
+                          <SelectItem key={model.id} value={model.id}>
+                            {model.display_name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Temperature ({editorTemperature})</Label>
+                    <Input
+                      type="range"
+                      min="0"
+                      max="1"
+                      step="0.1"
+                      value={editorTemperature}
+                      onChange={(e) => setEditorTemperature(parseFloat(e.target.value))}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Max Tokens</Label>
+                    <Input
+                      type="number"
+                      value={editorMaxTokens}
+                      onChange={(e) => setEditorMaxTokens(parseInt(e.target.value) || 4096)}
+                    />
+                  </div>
                 </div>
-                <div className="space-y-2">
-                  <Label>Temperature ({editorTemperature})</Label>
-                  <Input
-                    type="range"
-                    min="0"
-                    max="1"
-                    step="0.1"
-                    value={editorTemperature}
-                    onChange={(e) => setEditorTemperature(parseFloat(e.target.value))}
+
+                {/* Prompt Content */}
+                <div className="flex-1 space-y-2">
+                  <Label>Prompt Content</Label>
+                  <Textarea
+                    value={editorContent}
+                    onChange={(e) => setEditorContent(e.target.value)}
+                    className="h-[300px] font-mono text-sm resize-none"
+                    placeholder="Enter your prompt here. Use {{variable}} for interpolation."
                   />
                 </div>
-                <div className="space-y-2">
-                  <Label>Max Tokens</Label>
-                  <Input
-                    type="number"
-                    value={editorMaxTokens}
-                    onChange={(e) => setEditorMaxTokens(parseInt(e.target.value) || 4096)}
-                  />
-                </div>
-              </div>
 
-              {/* Prompt Content */}
-              <div className="flex-1 space-y-2">
-                <Label>Prompt Content</Label>
-                <Textarea
-                  value={editorContent}
-                  onChange={(e) => setEditorContent(e.target.value)}
-                  className="h-[300px] font-mono text-sm resize-none"
-                  placeholder="Enter your prompt here. Use {{variable}} for interpolation."
-                />
-              </div>
-
-              {/* Actions */}
-              <div className="flex items-center justify-between">
-                <div className="flex gap-2">
-                  <Button
-                    variant="outline"
-                    onClick={() => setShowVersions(!showVersions)}
-                  >
-                    <History className="mr-2 h-4 w-4" />
-                    History
-                  </Button>
-                  <Button
-                    variant="outline"
-                    onClick={() => {
-                      const vars = extractVariables(editorContent);
-                      setPreviewVariables(
-                        Object.fromEntries(vars.map((v) => [v, previewVariables[v] || ""]))
-                      );
-                      setShowPreview(!showPreview);
-                    }}
-                  >
-                    <Eye className="mr-2 h-4 w-4" />
-                    Preview
+                {/* Actions */}
+                <div className="flex items-center justify-between">
+                  <div className="flex gap-2">
+                    <Button
+                      variant="outline"
+                      onClick={() => setShowVersions(!showVersions)}
+                    >
+                      <History className="mr-2 h-4 w-4" />
+                      History
+                    </Button>
+                    <Button
+                      variant="outline"
+                      onClick={() => {
+                        const vars = extractVariables(editorContent);
+                        setPreviewVariables(
+                          Object.fromEntries(vars.map((v) => [v, previewVariables[v] || ""]))
+                        );
+                        setShowPreview(!showPreview);
+                      }}
+                    >
+                      <Eye className="mr-2 h-4 w-4" />
+                      Preview
+                    </Button>
+                  </div>
+                  <Button onClick={savePrompt} disabled={isSaving}>
+                    {isSaving ? (
+                      <>
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        Saving...
+                      </>
+                    ) : saveSuccess ? (
+                      <>
+                        <Check className="mr-2 h-4 w-4" />
+                        Saved!
+                      </>
+                    ) : (
+                      <>
+                        <Save className="mr-2 h-4 w-4" />
+                        Save New Version
+                      </>
+                    )}
                   </Button>
                 </div>
-                <Button onClick={savePrompt} disabled={isSaving}>
-                  {isSaving ? (
-                    <>
-                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                      Saving...
-                    </>
-                  ) : saveSuccess ? (
-                    <>
-                      <Check className="mr-2 h-4 w-4" />
-                      Saved!
-                    </>
+              </TabsContent>
+
+              <TabsContent value="guidelines" className="flex-1 mt-0 data-[state=inactive]:hidden">
+                <div className="space-y-4">
+                  <p className="text-sm text-muted-foreground">
+                    Select which brand guidelines should be included by default when using this prompt.
+                    These become template variables like <code className="bg-muted px-1 rounded">{"{{image_guidelines}}"}</code>.
+                  </p>
+
+                  {guidelines.length === 0 ? (
+                    <div className="text-center py-8 text-muted-foreground">
+                      <p>No guidelines available.</p>
+                      <p className="text-sm">Create guidelines in Settings first.</p>
+                    </div>
                   ) : (
-                    <>
-                      <Save className="mr-2 h-4 w-4" />
-                      Save New Version
-                    </>
+                    <ScrollArea className="h-[350px]">
+                      <div className="space-y-6">
+                        {/* Group by category */}
+                        {Object.entries(
+                          guidelines.reduce((acc, g) => {
+                            if (!acc[g.category]) acc[g.category] = [];
+                            acc[g.category].push(g);
+                            return acc;
+                          }, {} as Record<string, BrandGuideline[]>)
+                        ).map(([category, categoryGuidelines]) => (
+                          <div key={category} className="space-y-3">
+                            <h4 className="font-medium capitalize flex items-center gap-2">
+                              {category}
+                              <Badge variant="outline" className="text-xs">
+                                {"{{" + category + "_guidelines}}"}
+                              </Badge>
+                            </h4>
+                            <div className="space-y-2 pl-2">
+                              {categoryGuidelines.map((guideline) => (
+                                <div
+                                  key={guideline.id}
+                                  className="flex items-start gap-3 p-2 rounded-lg border bg-card hover:bg-muted/50 cursor-pointer"
+                                  onClick={() => toggleGuidelineDefault(guideline.id)}
+                                >
+                                  <Checkbox
+                                    checked={guidelineDefaults.has(guideline.id)}
+                                    onCheckedChange={() => toggleGuidelineDefault(guideline.id)}
+                                    className="mt-0.5"
+                                  />
+                                  <div className="flex-1 min-w-0">
+                                    <span className="font-medium text-sm">{guideline.name}</span>
+                                    <p className="text-xs text-muted-foreground line-clamp-2 mt-0.5">
+                                      {guideline.content}
+                                    </p>
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </ScrollArea>
                   )}
-                </Button>
-              </div>
-            </div>
+
+                  <div className="flex justify-end pt-4 border-t">
+                    <Button onClick={savePrompt} disabled={isSaving}>
+                      {isSaving ? (
+                        <>
+                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                          Saving...
+                        </>
+                      ) : saveSuccess ? (
+                        <>
+                          <Check className="mr-2 h-4 w-4" />
+                          Saved!
+                        </>
+                      ) : (
+                        <>
+                          <Save className="mr-2 h-4 w-4" />
+                          Save Changes
+                        </>
+                      )}
+                    </Button>
+                  </div>
+                </div>
+              </TabsContent>
 
             {/* Version History Sidebar */}
             {showVersions && (
@@ -531,7 +699,8 @@ export default function PromptsPage() {
                 </ScrollArea>
               </div>
             )}
-          </div>
+            </div>
+          </Tabs>
         </DialogContent>
       </Dialog>
     </div>

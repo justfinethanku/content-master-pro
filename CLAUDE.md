@@ -54,7 +54,7 @@ content-master-pro/
 
 ## Engineering Rules (MANDATORY)
 
-All code must follow these 13 rules.
+All code must follow these 14 rules.
 
 ### Rule 1: No Hardcoded Values
 **Any value that might change must be configurable** (database, env var, or config file):
@@ -161,6 +161,13 @@ Every AI call logged to `ai_call_logs` table:
 - `full_response` - Entire AI response
 - `model_id`, `tokens_in`, `tokens_out`, `duration_ms`
 
+### Rule 14: Plan Tracking
+All implementation plans must be tracked:
+- Copy plans from `~/.claude/plans/` to `./plans/<descriptive-name>.md`
+- Update the plan during implementation (check off completed items)
+- Mark status when finished: add `## Status: ✅ Complete` at the top
+- Keep completed plans for reference (don't delete)
+
 ## Database Tables
 
 ### Core Content
@@ -259,7 +266,11 @@ SUPABASE_SERVICE_ROLE_KEY     # For server-side operations
 PINECONE_API_KEY              # Pinecone API key
 PINECONE_HOST                 # Pinecone index host
 VERCEL_AI_GATEWAY_API_KEY     # AI Gateway key
+TEST_EMAIL                    # Test account email
+TEST_PASSWORD                 # Test account password
 ```
+
+**Test Credentials:** See `.env.local` for `TEST_EMAIL` and `TEST_PASSWORD` values.
 
 ## Common Patterns
 
