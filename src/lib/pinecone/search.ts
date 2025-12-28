@@ -46,9 +46,10 @@ export async function searchPosts(options: SearchOptions): Promise<SearchResult[
   const index = client.index(INDEX_NAME);
 
   // Generate query embedding using Pinecone Inference
+  // Note: SDK types expect string[] but API requires {text: string}[] format
   const embeddings = await client.inference.embed(
     EMBEDDING_MODEL,
-    [{ text: query }],
+    [{ text: query }] as unknown as string[],
     { inputType: "query", truncate: "END" }
   );
 
