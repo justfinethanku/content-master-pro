@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -18,8 +18,26 @@ import {
   Quote,
   BarChart3,
   HelpCircle,
+  X,
+  Brain,
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
+import { useGenerateJSON } from "@/hooks/use-generate";
+import ReactMarkdown from "react-markdown";
+
+interface BrainDumpTheme {
+  theme: string;
+  description: string;
+  potential_angles: string[];
+  related_topics: string[];
+}
+
+interface ResearchContext {
+  themes: BrainDumpTheme[];
+  queries: string[];
+  insights: string[];
+  overallDirection: string;
+}
 
 interface ResearchSource {
   title: string;
@@ -51,56 +69,183 @@ export default function ResearchPage() {
   const initialTheme = searchParams.get("theme") || "";
   const initialDescription = searchParams.get("description") || "";
   const sessionId = searchParams.get("session_id");
+  const fromBrainDump = searchParams.get("from_brain_dump") === "true";
+
+  // Brain dump context state
+  const [brainDumpContext, setBrainDumpContext] = useState<ResearchContext | null>(null);
+  const [contextThemes, setContextThemes] = useState<BrainDumpTheme[]>([]);
+  const [contextQueries, setContextQueries] = useState<string[]>([]);
+  const [contextInsights, setContextInsights] = useState<string[]>([]);
 
   const [theme, setTheme] = useState(initialTheme);
   const [additionalContext, setAdditionalContext] = useState(initialDescription);
-  const [isLoading, setIsLoading] = useState(false);
   const [result, setResult] = useState<ResearchResult | null>(null);
-  const [error, setError] = useState<string | null>(null);
   const [selectedPoints, setSelectedPoints] = useState<Set<string>>(new Set());
   const [selectedDataPoints, setSelectedDataPoints] = useState<Set<string>>(new Set());
+
+  const [isLoadingExisting, setIsLoadingExisting] = useState(false);
+
+  // Use the universal generate hook
+  const { generateJSON, isLoading, error: generateError } = useGenerateJSON<ResearchResult>();
+  const error = generateError?.message || null;
+
+  // Load existing research from database when session_id present (and not from fresh brain dump)
+  useEffect(() => {
+    async function loadExistingResearch() {
+      if (!sessionId || fromBrainDump) return;
+
+      setIsLoadingExisting(true);
+      try {
+        const supabase = createClient();
+        const { data: existingResearch, error } = await supabase
+          .from("content_research")
+          .select("*")
+          .eq("session_id", sessionId)
+          .order("created_at", { ascending: false })
+          .limit(1)
+          .single();
+
+        if (error && error.code !== "PGRST116") {
+          // PGRST116 = no rows found, which is fine
+          console.error("Failed to load existing research:", error);
+        }
+
+        if (existingResearch) {
+          setTheme(existingResearch.query || "");
+
+          // Parse the stored research response
+          try {
+            const parsedResult = typeof existingResearch.response === "string"
+              ? JSON.parse(existingResearch.response)
+              : existingResearch.response;
+
+            // If response is structured with our expected fields, use it
+            if (parsedResult && typeof parsedResult === "object") {
+              setResult({
+                topic: existingResearch.query || "",
+                summary: parsedResult.summary || parsedResult.research_summary || String(existingResearch.response),
+                key_points: parsedResult.key_points || [],
+                sources: existingResearch.sources || parsedResult.sources || [],
+                related_questions: parsedResult.related_questions || [],
+                data_points: parsedResult.data_points || [],
+              });
+
+              // Auto-select all loaded points
+              if (parsedResult.key_points) {
+                setSelectedPoints(new Set(parsedResult.key_points));
+              }
+              if (parsedResult.data_points) {
+                setSelectedDataPoints(new Set(parsedResult.data_points));
+              }
+            } else {
+              // Fallback for plain text response
+              setResult({
+                topic: existingResearch.query || "",
+                summary: String(existingResearch.response),
+                key_points: [],
+                sources: existingResearch.sources || [],
+                related_questions: [],
+                data_points: [],
+              });
+            }
+          } catch {
+            // If parsing fails, treat response as plain text summary
+            setResult({
+              topic: existingResearch.query || "",
+              summary: String(existingResearch.response),
+              key_points: [],
+              sources: existingResearch.sources || [],
+              related_questions: [],
+              data_points: [],
+            });
+          }
+        }
+      } catch (err) {
+        console.error("Error loading existing research:", err);
+      } finally {
+        setIsLoadingExisting(false);
+      }
+    }
+
+    loadExistingResearch();
+  }, [sessionId, fromBrainDump]);
+
+  // Load brain dump context from sessionStorage
+  useEffect(() => {
+    if (fromBrainDump) {
+      const stored = sessionStorage.getItem("research_context");
+      if (stored) {
+        try {
+          const context: ResearchContext = JSON.parse(stored);
+          setBrainDumpContext(context);
+          setContextThemes(context.themes);
+          setContextQueries(context.queries);
+          setContextInsights(context.insights);
+
+          // Build initial theme from selected items
+          const themeNames = context.themes.map((t) => t.theme).join(", ");
+          const queryText = context.queries.join("; ");
+          setTheme(themeNames || queryText);
+
+          // Build additional context from insights and overall direction
+          const contextParts = [];
+          if (context.overallDirection) {
+            contextParts.push(`Overall direction: ${context.overallDirection}`);
+          }
+          if (context.insights.length > 0) {
+            contextParts.push(`Key insights to consider: ${context.insights.join("; ")}`);
+          }
+          if (context.themes.length > 0) {
+            const angles = context.themes.flatMap((t) => t.potential_angles).slice(0, 5);
+            if (angles.length > 0) {
+              contextParts.push(`Potential angles: ${angles.join(", ")}`);
+            }
+          }
+          setAdditionalContext(contextParts.join("\n\n"));
+
+          // Clear sessionStorage after loading
+          sessionStorage.removeItem("research_context");
+        } catch {
+          console.error("Failed to parse research context");
+        }
+      }
+    }
+  }, [fromBrainDump]);
+
+  const removeContextTheme = (idx: number) => {
+    setContextThemes((prev) => prev.filter((_, i) => i !== idx));
+  };
+
+  const removeContextQuery = (idx: number) => {
+    setContextQueries((prev) => prev.filter((_, i) => i !== idx));
+  };
+
+  const removeContextInsight = (idx: number) => {
+    setContextInsights((prev) => prev.filter((_, i) => i !== idx));
+  };
 
   const handleResearch = useCallback(async () => {
     if (!theme.trim()) return;
 
-    setIsLoading(true);
-    setError(null);
+    // Use the universal generate endpoint
+    const parsed = await generateJSON({
+      prompt_slug: "research_generator",
+      session_id: sessionId || undefined,
+      variables: {
+        content: theme.trim(),
+        description: additionalContext.trim() || "",
+      },
+      overrides: {
+        model_id: "perplexity/sonar-pro",
+      },
+    });
 
-    try {
-      const supabase = createClient();
-      const { data: { session } } = await supabase.auth.getSession();
-
-      if (!session) {
-        setError("Please log in to continue");
-        return;
-      }
-
-      const response = await fetch(
-        `${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/generate-research`,
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "Authorization": `Bearer ${session.access_token}`,
-          },
-          body: JSON.stringify({
-            theme: theme.trim(),
-            description: additionalContext.trim() || undefined,
-            session_id: sessionId || undefined,
-          }),
-        }
-      );
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || "Failed to generate research");
-      }
-
-      const data = (await response.json()) as ResearchResponse;
-      setResult(data.result);
+    if (parsed) {
+      setResult(parsed);
 
       // Update session status to 'research'
       if (sessionId) {
+        const supabase = createClient();
         await supabase
           .from("content_sessions")
           .update({ status: "research" })
@@ -108,15 +253,10 @@ export default function ResearchPage() {
       }
 
       // Auto-select all key points and data points
-      setSelectedPoints(new Set(data.result.key_points));
-      setSelectedDataPoints(new Set(data.result.data_points));
-    } catch (err) {
-      console.error("Research error:", err);
-      setError(err instanceof Error ? err.message : "Something went wrong");
-    } finally {
-      setIsLoading(false);
+      setSelectedPoints(new Set(parsed.key_points));
+      setSelectedDataPoints(new Set(parsed.data_points));
     }
-  }, [theme, additionalContext, sessionId]);
+  }, [theme, additionalContext, sessionId, generateJSON]);
 
   const togglePoint = (point: string) => {
     setSelectedPoints((prev) => {
@@ -163,6 +303,93 @@ export default function ResearchPage() {
         </p>
       </div>
 
+      {/* Brain Dump Context - shown when coming from Create page */}
+      {(contextThemes.length > 0 || contextQueries.length > 0 || contextInsights.length > 0) && (
+        <Card className="border-primary/20 bg-primary/5">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-lg flex items-center gap-2">
+              <Brain className="h-5 w-5" />
+              Selected from Brain Dump
+            </CardTitle>
+            <CardDescription>
+              Remove items you don't want to research, or edit the topic below
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {/* Themes */}
+            {contextThemes.length > 0 && (
+              <div className="space-y-2">
+                <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Themes</p>
+                <div className="flex flex-wrap gap-2">
+                  {contextThemes.map((t, idx) => (
+                    <Badge
+                      key={idx}
+                      variant="secondary"
+                      className="flex items-center gap-1 pr-1"
+                    >
+                      {t.theme}
+                      <button
+                        onClick={() => removeContextTheme(idx)}
+                        className="ml-1 hover:bg-muted rounded-full p-0.5"
+                      >
+                        <X className="h-3 w-3" />
+                      </button>
+                    </Badge>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Queries */}
+            {contextQueries.length > 0 && (
+              <div className="space-y-2">
+                <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Research Queries</p>
+                <div className="flex flex-wrap gap-2">
+                  {contextQueries.map((q, idx) => (
+                    <Badge
+                      key={idx}
+                      variant="outline"
+                      className="flex items-center gap-1 pr-1"
+                    >
+                      {q}
+                      <button
+                        onClick={() => removeContextQuery(idx)}
+                        className="ml-1 hover:bg-muted rounded-full p-0.5"
+                      >
+                        <X className="h-3 w-3" />
+                      </button>
+                    </Badge>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Insights */}
+            {contextInsights.length > 0 && (
+              <div className="space-y-2">
+                <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Context Insights</p>
+                <div className="space-y-1">
+                  {contextInsights.map((insight, idx) => (
+                    <div
+                      key={idx}
+                      className="flex items-start gap-2 text-sm text-muted-foreground bg-background rounded p-2"
+                    >
+                      <span className="flex-1">{insight}</span>
+                      <button
+                        onClick={() => removeContextInsight(idx)}
+                        className="hover:bg-muted rounded-full p-0.5 shrink-0"
+                      >
+                        <X className="h-3 w-3" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
       {/* Research Input */}
       <Card>
         <CardHeader>
@@ -171,7 +398,9 @@ export default function ResearchPage() {
             Research Topic
           </CardTitle>
           <CardDescription>
-            Enter a topic and we'll gather current research, statistics, and perspectives.
+            {brainDumpContext
+              ? "Edit the topic below or start researching with the selected items"
+              : "Enter a topic and we'll gather current research, statistics, and perspectives."}
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -243,9 +472,9 @@ export default function ResearchPage() {
                 </CardTitle>
               </CardHeader>
               <CardContent>
-                <p className="text-muted-foreground whitespace-pre-wrap">
-                  {result.summary}
-                </p>
+                <div className="prose prose-sm dark:prose-invert max-w-none text-muted-foreground">
+                  <ReactMarkdown>{result.summary}</ReactMarkdown>
+                </div>
               </CardContent>
             </Card>
 
@@ -413,8 +642,20 @@ export default function ResearchPage() {
         </div>
       )}
 
+      {/* Loading Existing Research State */}
+      {isLoadingExisting && (
+        <Card>
+          <CardContent className="flex flex-col items-center justify-center py-12">
+            <Loader2 className="h-12 w-12 animate-spin text-primary mb-4" />
+            <p className="text-muted-foreground text-center">
+              Loading existing research...
+            </p>
+          </CardContent>
+        </Card>
+      )}
+
       {/* Empty State */}
-      {!result && !isLoading && (
+      {!result && !isLoading && !isLoadingExisting && (
         <Card className="border-dashed">
           <CardContent className="flex flex-col items-center justify-center py-12">
             <Search className="h-12 w-12 text-muted-foreground/50 mb-4" />

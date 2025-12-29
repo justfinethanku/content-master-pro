@@ -1,14 +1,15 @@
 "use client";
 
-import { useState, useCallback } from "react";
-import { useRouter } from "next/navigation";
+import { useState, useCallback, useEffect } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
-import { Loader2, Sparkles, Brain, Lightbulb, ArrowRight, Search } from "lucide-react";
+import { Loader2, Sparkles, Brain, Lightbulb, ArrowRight, Check } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
+import { useGenerateJSON } from "@/hooks/use-generate";
 
 interface ExtractedTheme {
   theme: string;
@@ -35,31 +36,136 @@ interface ParseResponse {
 
 export default function CreatePage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const sessionIdFromUrl = searchParams.get("session_id");
+
   const [content, setContent] = useState("");
-  const [isProcessing, setIsProcessing] = useState(false);
+  const [isLoadingSession, setIsLoadingSession] = useState(false);
   const [result, setResult] = useState<BrainDumpResult | null>(null);
-  const [error, setError] = useState<string | null>(null);
   const [sessionId, setSessionId] = useState<string | null>(null);
+
+  // Use the new universal generate hook
+  const { generateJSON, isLoading: isProcessing, error: generateError } = useGenerateJSON<BrainDumpResult>();
+  const error = generateError?.message || null;
+
+  // Selection state for research items
+  const [selectedThemes, setSelectedThemes] = useState<Set<number>>(new Set());
+  const [selectedQueries, setSelectedQueries] = useState<Set<number>>(new Set());
+  const [selectedInsights, setSelectedInsights] = useState<Set<number>>(new Set());
+
+  // Load existing session if session_id is in URL
+  useEffect(() => {
+    async function loadExistingSession() {
+      if (!sessionIdFromUrl) return;
+
+      setIsLoadingSession(true);
+      try {
+        const supabase = createClient();
+        const { data, error: fetchError } = await supabase
+          .from("content_sessions")
+          .select(`
+            *,
+            content_brain_dumps(raw_content, extracted_themes)
+          `)
+          .eq("id", sessionIdFromUrl)
+          .single();
+
+        if (fetchError) {
+          console.error("Failed to load session:", fetchError);
+          return;
+        }
+
+        if (data) {
+          setSessionId(data.id);
+
+          const brainDump = data.content_brain_dumps?.[0];
+          if (brainDump) {
+            // Load the raw content
+            if (brainDump.raw_content) {
+              setContent(brainDump.raw_content);
+            }
+
+            // Load the extracted themes
+            if (brainDump.extracted_themes) {
+              setResult(brainDump.extracted_themes);
+            }
+          }
+        }
+      } catch (err) {
+        console.error("Error loading session:", err);
+      } finally {
+        setIsLoadingSession(false);
+      }
+    }
+
+    loadExistingSession();
+  }, [sessionIdFromUrl]);
+
+  // Auto-select first theme and first 2 queries when results come in
+  useEffect(() => {
+    if (result) {
+      setSelectedThemes(new Set([0])); // Select first theme
+      setSelectedQueries(new Set(result.suggested_research_queries.slice(0, 2).map((_, i) => i)));
+      setSelectedInsights(new Set()); // Insights are optional, start unselected
+    }
+  }, [result]);
+
+  const toggleTheme = (idx: number) => {
+    setSelectedThemes((prev) => {
+      const next = new Set(prev);
+      if (next.has(idx)) {
+        next.delete(idx);
+      } else {
+        next.add(idx);
+      }
+      return next;
+    });
+  };
+
+  const toggleQuery = (idx: number) => {
+    setSelectedQueries((prev) => {
+      const next = new Set(prev);
+      if (next.has(idx)) {
+        next.delete(idx);
+      } else {
+        next.add(idx);
+      }
+      return next;
+    });
+  };
+
+  const toggleInsight = (idx: number) => {
+    setSelectedInsights((prev) => {
+      const next = new Set(prev);
+      if (next.has(idx)) {
+        next.delete(idx);
+      } else {
+        next.add(idx);
+      }
+      return next;
+    });
+  };
+
+  const totalSelected = selectedThemes.size + selectedQueries.size + selectedInsights.size;
 
   const handleParse = useCallback(async () => {
     if (!content.trim()) return;
 
-    setIsProcessing(true);
-    setError(null);
+    const supabase = createClient();
+    const { data: { session } } = await supabase.auth.getSession();
 
-    try {
-      const supabase = createClient();
-      const { data: { session } } = await supabase.auth.getSession();
+    if (!session) {
+      return;
+    }
 
-      if (!session) {
-        setError("Please log in to continue");
-        return;
-      }
+    let activeSessionId = sessionId;
 
-      // Create a content_session record FIRST
+    // Only create a new session if we don't already have one
+    if (!activeSessionId) {
       const { data: newSession, error: sessionError } = await supabase
         .from("content_sessions")
         .insert({
+          user_id: session.user.id,
           status: "brain_dump",
           title: content.trim().slice(0, 50) + (content.length > 50 ? "..." : ""),
         })
@@ -67,60 +173,96 @@ export default function CreatePage() {
         .single();
 
       if (sessionError) {
-        throw new Error(`Failed to create session: ${sessionError.message}`);
+        console.error("Failed to create session:", sessionError);
+        return;
       }
 
+      activeSessionId = newSession.id;
       setSessionId(newSession.id);
-
-      // Call the Edge Function with session_id
-      const response = await fetch(
-        `${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/parse-brain-dump`,
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "Authorization": `Bearer ${session.access_token}`,
-          },
-          body: JSON.stringify({
-            content: content.trim(),
-            session_id: newSession.id,
-          }),
-        }
-      );
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || "Failed to parse brain dump");
-      }
-
-      const data = (await response.json()) as ParseResponse;
-      setResult(data.result);
-    } catch (err) {
-      console.error("Parse error:", err);
-      setError(err instanceof Error ? err.message : "Something went wrong");
-    } finally {
-      setIsProcessing(false);
+    } else {
+      // Update the existing session title if content changed
+      await supabase
+        .from("content_sessions")
+        .update({
+          title: content.trim().slice(0, 50) + (content.length > 50 ? "..." : ""),
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", activeSessionId);
     }
-  }, [content]);
 
-  const handleResearchTopic = (theme: ExtractedTheme) => {
-    // Navigate to research page with session_id and theme
-    const params = new URLSearchParams({
-      theme: theme.theme,
-      description: theme.description,
+    // Use the universal generate endpoint
+    const parsed = await generateJSON({
+      prompt_slug: "brain_dump_parser",
+      session_id: activeSessionId || undefined,
+      variables: {
+        content: content.trim(),
+      },
     });
+
+    if (parsed) {
+      setResult(parsed);
+    }
+  }, [content, sessionId, generateJSON]);
+
+  const handleContinueToResearch = () => {
+    if (!result || totalSelected === 0) return;
+
+    // Gather selected items
+    const selectedThemeData = result.themes.filter((_, idx) => selectedThemes.has(idx));
+    const selectedQueryData = result.suggested_research_queries.filter((_, idx) => selectedQueries.has(idx));
+    const selectedInsightData = result.key_insights.filter((_, idx) => selectedInsights.has(idx));
+
+    // Store in sessionStorage for cleaner URL
+    sessionStorage.setItem(
+      "research_context",
+      JSON.stringify({
+        themes: selectedThemeData,
+        queries: selectedQueryData,
+        insights: selectedInsightData,
+        overallDirection: result.overall_direction,
+      })
+    );
+
+    // Navigate to research page with session_id
+    const params = new URLSearchParams();
     if (sessionId) {
       params.set("session_id", sessionId);
     }
+    params.set("from_brain_dump", "true");
     router.push(`/research?${params.toString()}`);
   };
+
+  // Show loading state when loading existing session
+  if (isLoadingSession) {
+    return (
+      <div className="space-y-6">
+        <div>
+          <h1 className="text-3xl font-bold tracking-tight">Create Content</h1>
+          <p className="text-muted-foreground">
+            Loading existing session...
+          </p>
+        </div>
+
+        <Card>
+          <CardContent className="flex flex-col items-center justify-center py-12">
+            <Loader2 className="h-12 w-12 animate-spin text-primary mb-4" />
+            <p className="text-muted-foreground text-center">
+              Loading your brain dump...
+            </p>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
       <div>
         <h1 className="text-3xl font-bold tracking-tight">Create Content</h1>
         <p className="text-muted-foreground">
-          Start with a brain dump and let AI help you structure your ideas.
+          {sessionId
+            ? "Continue working on your brain dump and ideas."
+            : "Start with a brain dump and let AI help you structure your ideas."}
         </p>
       </div>
 
@@ -203,89 +345,156 @@ For example:
                 <CardHeader className="pb-2">
                   <CardTitle className="text-lg">Themes</CardTitle>
                   <CardDescription>
-                    Click "Research" on any theme to dive deeper
+                    Select themes to research together
                   </CardDescription>
                 </CardHeader>
-                <CardContent className="space-y-4">
+                <CardContent className="space-y-2">
                   {result.themes.map((theme, idx) => (
-                    <div key={idx} className="space-y-2">
-                      <div className="flex items-start justify-between gap-2">
-                        <div>
+                    <button
+                      key={idx}
+                      onClick={() => toggleTheme(idx)}
+                      className={`w-full text-left p-3 rounded-lg border transition-colors ${
+                        selectedThemes.has(idx)
+                          ? "border-primary bg-primary/5"
+                          : "border-border hover:bg-muted"
+                      }`}
+                    >
+                      <div className="flex items-start gap-3">
+                        <div
+                          className={`mt-0.5 h-5 w-5 rounded-full border-2 flex items-center justify-center shrink-0 ${
+                            selectedThemes.has(idx)
+                              ? "border-primary bg-primary"
+                              : "border-muted-foreground"
+                          }`}
+                        >
+                          {selectedThemes.has(idx) && (
+                            <Check className="h-3 w-3 text-primary-foreground" />
+                          )}
+                        </div>
+                        <div className="flex-1 min-w-0">
                           <h4 className="font-medium">{theme.theme}</h4>
                           <p className="text-sm text-muted-foreground">{theme.description}</p>
+                          <div className="flex flex-wrap gap-1 mt-2">
+                            {theme.potential_angles.map((angle, aIdx) => (
+                              <Badge key={aIdx} variant="secondary" className="text-xs">
+                                {angle}
+                              </Badge>
+                            ))}
+                          </div>
                         </div>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => handleResearchTopic(theme)}
-                        >
-                          <Search className="mr-1 h-3 w-3" />
-                          Research
-                        </Button>
                       </div>
-                      <div className="flex flex-wrap gap-1">
-                        {theme.potential_angles.map((angle, aIdx) => (
-                          <Badge key={aIdx} variant="secondary" className="text-xs">
-                            {angle}
-                          </Badge>
-                        ))}
-                      </div>
-                      {idx < result.themes.length - 1 && <Separator className="mt-3" />}
-                    </div>
+                    </button>
                   ))}
                 </CardContent>
               </Card>
 
-              {/* Key Insights */}
+              {/* Suggested Research Queries */}
+              <Card>
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-lg">Research Queries</CardTitle>
+                  <CardDescription>
+                    Add to your research
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-2">
+                  {result.suggested_research_queries.map((query, idx) => (
+                    <button
+                      key={idx}
+                      onClick={() => toggleQuery(idx)}
+                      className={`w-full text-left p-3 rounded-lg border transition-colors flex items-start gap-3 ${
+                        selectedQueries.has(idx)
+                          ? "border-primary bg-primary/5"
+                          : "border-border hover:bg-muted"
+                      }`}
+                    >
+                      <div
+                        className={`mt-0.5 h-5 w-5 rounded-full border-2 flex items-center justify-center shrink-0 ${
+                          selectedQueries.has(idx)
+                            ? "border-primary bg-primary"
+                            : "border-muted-foreground"
+                        }`}
+                      >
+                        {selectedQueries.has(idx) && (
+                          <Check className="h-3 w-3 text-primary-foreground" />
+                        )}
+                      </div>
+                      <span className="text-sm">{query}</span>
+                    </button>
+                  ))}
+                </CardContent>
+              </Card>
+
+              {/* Key Insights (optional context) */}
               <Card>
                 <CardHeader className="pb-2">
                   <CardTitle className="text-lg">Key Insights</CardTitle>
+                  <CardDescription>
+                    Optional - include as context for research
+                  </CardDescription>
                 </CardHeader>
-                <CardContent>
-                  <ul className="space-y-2">
-                    {result.key_insights.map((insight, idx) => (
-                      <li key={idx} className="flex gap-2 text-sm">
-                        <span className="text-primary">•</span>
-                        <span className="text-muted-foreground">{insight}</span>
-                      </li>
-                    ))}
-                  </ul>
+                <CardContent className="space-y-2">
+                  {result.key_insights.map((insight, idx) => (
+                    <button
+                      key={idx}
+                      onClick={() => toggleInsight(idx)}
+                      className={`w-full text-left p-3 rounded-lg border transition-colors flex items-start gap-3 ${
+                        selectedInsights.has(idx)
+                          ? "border-primary bg-primary/5"
+                          : "border-border hover:bg-muted"
+                      }`}
+                    >
+                      <div
+                        className={`mt-0.5 h-5 w-5 rounded-full border-2 flex items-center justify-center shrink-0 ${
+                          selectedInsights.has(idx)
+                            ? "border-primary bg-primary"
+                            : "border-muted-foreground"
+                        }`}
+                      >
+                        {selectedInsights.has(idx) && (
+                          <Check className="h-3 w-3 text-primary-foreground" />
+                        )}
+                      </div>
+                      <span className="text-sm text-muted-foreground">{insight}</span>
+                    </button>
+                  ))}
                 </CardContent>
               </Card>
 
-              {/* Suggested Research */}
+              {/* Selection Summary & Continue Button */}
               <Card>
-                <CardHeader className="pb-2">
-                  <CardTitle className="text-lg">Suggested Research</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="flex flex-wrap gap-2">
-                    {result.suggested_research_queries.map((query, idx) => (
-                      <Badge
-                        key={idx}
-                        variant="outline"
-                        className="cursor-pointer hover:bg-accent"
-                      >
-                        {query}
-                      </Badge>
-                    ))}
+                <CardContent className="pt-6">
+                  <div className="space-y-4">
+                    <div className="flex justify-between text-sm">
+                      <span className="text-muted-foreground">Themes selected</span>
+                      <Badge variant="secondary">{selectedThemes.size}</Badge>
+                    </div>
+                    <div className="flex justify-between text-sm">
+                      <span className="text-muted-foreground">Queries selected</span>
+                      <Badge variant="secondary">{selectedQueries.size}</Badge>
+                    </div>
+                    <div className="flex justify-between text-sm">
+                      <span className="text-muted-foreground">Insights included</span>
+                      <Badge variant="secondary">{selectedInsights.size}</Badge>
+                    </div>
+                    <Separator />
+                    <Button
+                      className="w-full"
+                      size="lg"
+                      onClick={handleContinueToResearch}
+                      disabled={totalSelected === 0}
+                    >
+                      {totalSelected === 0 ? (
+                        "Select items to continue"
+                      ) : (
+                        <>
+                          Continue to Research ({totalSelected} selected)
+                          <ArrowRight className="ml-2 h-4 w-4" />
+                        </>
+                      )}
+                    </Button>
                   </div>
                 </CardContent>
               </Card>
-
-              {/* Next Step */}
-              <Button
-                className="w-full"
-                size="lg"
-                onClick={() => {
-                  if (result?.themes[0]) {
-                    handleResearchTopic(result.themes[0]);
-                  }
-                }}
-              >
-                Continue to Research
-                <ArrowRight className="ml-2 h-4 w-4" />
-              </Button>
             </>
           ) : (
             <Card className="border-dashed">

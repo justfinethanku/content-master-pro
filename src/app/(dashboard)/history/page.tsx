@@ -198,8 +198,35 @@ export default function HistoryPage() {
     setSessionDetails(data);
   };
 
-  const handleGenerateMore = (session: ContentSession) => {
-    router.push(`/outputs?session_id=${session.id}`);
+  const handleGenerateMore = async (session: ContentSession) => {
+    // Check what content exists to determine the best next step
+    const { data } = await supabase
+      .from("content_sessions")
+      .select(`
+        content_drafts(id),
+        content_outlines(id),
+        content_research(id)
+      `)
+      .eq("id", session.id)
+      .single();
+
+    const drafts = data?.content_drafts ?? [];
+    const outlines = data?.content_outlines ?? [];
+    const research = data?.content_research ?? [];
+
+    if (drafts.length > 0) {
+      // Has draft → go to outputs
+      router.push(`/outputs?session_id=${session.id}`);
+    } else if (outlines.length > 0) {
+      // Has outline but no draft → go to draft
+      router.push(`/draft?session_id=${session.id}`);
+    } else if (research.length > 0) {
+      // Has research but no outline → go to outline
+      router.push(`/outline?session_id=${session.id}`);
+    } else {
+      // No content yet - nothing to generate more from
+      setError("This session doesn't have enough content yet. Try continuing from where you left off.");
+    }
   };
 
   const handleDelete = async () => {

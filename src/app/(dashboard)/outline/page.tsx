@@ -22,6 +22,7 @@ import {
   ArrowLeft,
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
+import { useGenerateJSON } from "@/hooks/use-generate";
 
 interface OutlineSection {
   title: string;
@@ -108,12 +109,15 @@ export default function OutlinePage() {
   const themeFromUrl = searchParams.get("theme");
 
   const [research, setResearch] = useState<ResearchData | null>(null);
-  const [isLoading, setIsLoading] = useState(false);
   const [isLoadingResearch, setIsLoadingResearch] = useState(true);
   const [result, setResult] = useState<OutlineResponse | null>(null);
-  const [error, setError] = useState<string | null>(null);
   const [userInput, setUserInput] = useState("");
   const [expandedSections, setExpandedSections] = useState<Set<number>>(new Set());
+  const [loadError, setLoadError] = useState<string | null>(null);
+
+  // Use the universal generate hook
+  const { generateJSON, isLoading, error: generateError } = useGenerateJSON<OutlineResponse>();
+  const error = loadError || generateError?.message || null;
 
   // Load research data from database using session_id
   useEffect(() => {
@@ -137,7 +141,7 @@ export default function OutlinePage() {
 
         if (researchError) {
           console.error("Failed to load research:", researchError);
-          setError("Failed to load research data");
+          setLoadError("Failed to load research data");
           setIsLoadingResearch(false);
           return;
         }
@@ -156,7 +160,7 @@ export default function OutlinePage() {
         }
       } catch (err) {
         console.error("Error loading research:", err);
-        setError("Failed to load research data");
+        setLoadError("Failed to load research data");
       } finally {
         setIsLoadingResearch(false);
       }
@@ -168,61 +172,34 @@ export default function OutlinePage() {
   const handleGenerateOutline = useCallback(async () => {
     if (!research) return;
 
-    setIsLoading(true);
-    setError(null);
+    // Use the universal generate endpoint
+    const parsed = await generateJSON({
+      prompt_slug: "outline_generator",
+      session_id: sessionId || undefined,
+      variables: {
+        content: research.theme,
+        research_summary: research.summary || "",
+        key_points: [...research.key_points, ...research.data_points].join("\n"),
+        user_input: userInput.trim() || "",
+      },
+    });
 
-    try {
-      const supabase = createClient();
-      const { data: { session } } = await supabase.auth.getSession();
-
-      if (!session) {
-        setError("Please log in to continue");
-        return;
-      }
-
-      const response = await fetch(
-        `${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/generate-outlines`,
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "Authorization": `Bearer ${session.access_token}`,
-          },
-          body: JSON.stringify({
-            theme: research.theme,
-            research_summary: research.summary,
-            key_points: [...research.key_points, ...research.data_points],
-            user_input: userInput.trim() || undefined,
-            session_id: sessionId || undefined,
-          }),
-        }
-      );
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || "Failed to generate outline");
-      }
-
-      const data = await response.json();
-      setResult(data.result);
+    if (parsed) {
+      setResult(parsed);
 
       // Expand first section by default
       setExpandedSections(new Set([0]));
 
       // Update session status to 'outline'
       if (sessionId) {
+        const supabase = createClient();
         await supabase
           .from("content_sessions")
           .update({ status: "outline" })
           .eq("id", sessionId);
       }
-    } catch (err) {
-      console.error("Outline error:", err);
-      setError(err instanceof Error ? err.message : "Something went wrong");
-    } finally {
-      setIsLoading(false);
     }
-  }, [research, userInput, sessionId]);
+  }, [research, userInput, sessionId, generateJSON]);
 
   // Auto-generate on mount if research is available (wait for research to load)
   useEffect(() => {

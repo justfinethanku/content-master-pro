@@ -9,7 +9,7 @@ import {
   History,
   Settings,
   RefreshCw,
-  FileText,
+  FlaskConical,
   LayoutDashboard,
 } from "lucide-react";
 
@@ -18,7 +18,7 @@ const navigation = [
   { name: "Create", href: "/create", icon: Brain },
   { name: "Search", href: "/search", icon: Search },
   { name: "History", href: "/history", icon: History },
-  { name: "Prompts", href: "/prompts", icon: FileText },
+  { name: "Studio", href: "/studio", icon: FlaskConical },
   { name: "Sync", href: "/sync", icon: RefreshCw },
   { name: "Settings", href: "/settings", icon: Settings },
 ];

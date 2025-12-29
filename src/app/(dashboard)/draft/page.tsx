@@ -21,6 +21,7 @@ import {
   Mic,
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
+import { useGenerate, useGenerateJSON } from "@/hooks/use-generate";
 import { CrossReferencePanel } from "@/components/cross-reference-panel";
 
 interface OutlineData {
@@ -56,17 +57,32 @@ export default function DraftPage() {
 
   const [outline, setOutline] = useState<OutlineData | null>(null);
   const [draft, setDraft] = useState("");
-  const [isGenerating, setIsGenerating] = useState(false);
   const [isLoadingOutline, setIsLoadingOutline] = useState(true);
-  const [isCheckingVoice, setIsCheckingVoice] = useState(false);
   const [voiceScore, setVoiceScore] = useState<VoiceScore | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [streamedContent, setStreamedContent] = useState("");
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
-  // Load outline from database using session_id
+  const [existingDraftLoaded, setExistingDraftLoaded] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
+
+  // Use the universal generate hooks
+  const {
+    generate: generateDraft,
+    isLoading: isGenerating,
+    error: draftError,
+    streamedContent,
+  } = useGenerate();
+
+  const {
+    generateJSON: checkVoice,
+    isLoading: isCheckingVoice,
+    error: voiceError,
+  } = useGenerateJSON<VoiceScore>();
+
+  const error = loadError || draftError?.message || voiceError?.message || null;
+
+  // Load outline and existing draft from database using session_id
   useEffect(() => {
-    async function loadOutline() {
+    async function loadOutlineAndDraft() {
       if (!sessionId) {
         setIsLoadingOutline(false);
         return;
@@ -84,9 +100,9 @@ export default function DraftPage() {
           .limit(1)
           .single();
 
-        if (outlineError) {
+        if (outlineError && outlineError.code !== "PGRST116") {
           console.error("Failed to load outline:", outlineError);
-          setError("Failed to load outline data");
+          setLoadError("Failed to load outline data");
           setIsLoadingOutline(false);
           return;
         }
@@ -106,166 +122,98 @@ export default function DraftPage() {
             research_summary: researchData?.response,
           });
         }
+
+        // Check for existing draft BEFORE auto-generating
+        const { data: existingDraft, error: draftError } = await supabase
+          .from("content_drafts")
+          .select("content, voice_score")
+          .eq("session_id", sessionId)
+          .order("created_at", { ascending: false })
+          .limit(1)
+          .single();
+
+        if (draftError && draftError.code !== "PGRST116") {
+          console.error("Failed to load existing draft:", draftError);
+        }
+
+        if (existingDraft?.content) {
+          setDraft(existingDraft.content);
+          setExistingDraftLoaded(true);
+          if (existingDraft.voice_score) {
+            setVoiceScore(existingDraft.voice_score);
+          }
+        }
       } catch (err) {
         console.error("Error loading outline:", err);
-        setError("Failed to load outline data");
+        setLoadError("Failed to load outline data");
       } finally {
         setIsLoadingOutline(false);
       }
     }
 
-    loadOutline();
+    loadOutlineAndDraft();
   }, [sessionId]);
 
   const handleGenerateDraft = useCallback(async () => {
     if (!outline) return;
 
-    setIsGenerating(true);
-    setError(null);
-    setStreamedContent("");
     setVoiceScore(null);
 
-    try {
-      const supabase = createClient();
-      const { data: { session } } = await supabase.auth.getSession();
+    // Use the universal generate endpoint with streaming
+    const result = await generateDraft({
+      prompt_slug: "draft_writer_substack",
+      session_id: sessionId || undefined,
+      variables: {
+        content: JSON.stringify({
+          title: outline.title,
+          subtitle: outline.subtitle,
+          hook: outline.hook,
+          sections: outline.sections,
+          conclusion_approach: outline.conclusion_approach,
+          call_to_action: outline.call_to_action,
+        }),
+        research_summary: outline.research_summary || "",
+      },
+      stream: true,
+    });
 
-      if (!session) {
-        setError("Please log in to continue");
-        return;
-      }
-
-      // Use streaming for better UX
-      const response = await fetch(
-        `${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/generate-draft`,
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "Authorization": `Bearer ${session.access_token}`,
-            "Accept": "text/event-stream",
-          },
-          body: JSON.stringify({
-            outline: {
-              title: outline.title,
-              subtitle: outline.subtitle,
-              hook: outline.hook,
-              sections: outline.sections,
-              conclusion_approach: outline.conclusion_approach,
-              call_to_action: outline.call_to_action,
-            },
-            research_summary: outline.research_summary,
-            session_id: sessionId || undefined,
-          }),
-        }
-      );
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || "Failed to generate draft");
-      }
-
-      // Handle SSE stream
-      const reader = response.body?.getReader();
-      if (!reader) {
-        throw new Error("No response body");
-      }
-
-      const decoder = new TextDecoder();
-      let content = "";
-
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-
-        const chunk = decoder.decode(value);
-        const lines = chunk.split("\n");
-
-        for (const line of lines) {
-          if (line.startsWith("data: ")) {
-            const data = line.slice(6);
-            if (data === "[DONE]") {
-              break;
-            }
-            try {
-              const parsed = JSON.parse(data);
-              if (parsed.content) {
-                content += parsed.content;
-                setStreamedContent(content);
-              } else if (parsed.error) {
-                throw new Error(parsed.error);
-              }
-            } catch {
-              // Skip non-JSON data
-            }
-          }
-        }
-      }
-
-      setDraft(content);
+    if (result?.success && result.content) {
+      setDraft(result.content);
 
       // Update session status to 'draft'
       if (sessionId) {
+        const supabase = createClient();
         await supabase
           .from("content_sessions")
           .update({ status: "draft" })
           .eq("id", sessionId);
       }
-    } catch (err) {
-      console.error("Draft generation error:", err);
-      setError(err instanceof Error ? err.message : "Something went wrong");
-    } finally {
-      setIsGenerating(false);
     }
-  }, [outline, sessionId]);
+  }, [outline, sessionId, generateDraft]);
 
-  // Auto-generate on mount if outline is available (wait for outline to load)
+  // Auto-generate on mount if outline is available AND no existing draft was loaded
   useEffect(() => {
-    if (outline && !draft && !isGenerating && !isLoadingOutline) {
+    if (outline && !draft && !isGenerating && !isLoadingOutline && !existingDraftLoaded) {
       handleGenerateDraft();
     }
-  }, [outline, draft, isGenerating, isLoadingOutline, handleGenerateDraft]);
+  }, [outline, draft, isGenerating, isLoadingOutline, existingDraftLoaded, handleGenerateDraft]);
 
   const handleCheckVoice = useCallback(async () => {
     if (!draft.trim()) return;
 
-    setIsCheckingVoice(true);
-    setError(null);
+    // Use the universal generate endpoint
+    const result = await checkVoice({
+      prompt_slug: "voice_checker",
+      session_id: sessionId || undefined,
+      variables: {
+        content: draft,
+      },
+    });
 
-    try {
-      const supabase = createClient();
-      const { data: { session } } = await supabase.auth.getSession();
-
-      if (!session) {
-        setError("Please log in to continue");
-        return;
-      }
-
-      const response = await fetch(
-        `${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/check-voice`,
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "Authorization": `Bearer ${session.access_token}`,
-          },
-          body: JSON.stringify({ draft }),
-        }
-      );
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || "Failed to check voice");
-      }
-
-      const data = await response.json();
-      setVoiceScore(data.result);
-    } catch (err) {
-      console.error("Voice check error:", err);
-      setError(err instanceof Error ? err.message : "Something went wrong");
-    } finally {
-      setIsCheckingVoice(false);
+    if (result) {
+      setVoiceScore(result);
     }
-  }, [draft]);
+  }, [draft, sessionId, checkVoice]);
 
   const handleCopyDraft = () => {
     navigator.clipboard.writeText(draft);

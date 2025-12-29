@@ -449,3 +449,489 @@ supabase/functions/generate-image-prompt/index.ts  # Use DB guidelines
 3. At generation time, user can override which guidelines are active (passed to Edge Function)
 4. Edge Function loads guidelines, applies overrides, builds template variables
 5. Variables interpolated into prompt before AI call
+
+---
+
+## [2024-12-28 - Session] Meta Prompt Assembly System Refactor - Phase 1
+
+### Background & Motivation
+
+The user initiated a deep exploration of the prompt assembly system to understand how it works. During this exploration, we discovered significant architectural complexity:
+
+- **10 separate Edge Functions** all doing essentially the same thing: load prompt → load settings → load guidelines → interpolate → call AI → log result
+- **Two conflicting model selection strategies**: 7 functions load models from `prompt_versions.model_id` (correct), but 2 functions load from `app_settings` (inconsistent)
+- **Platform specs hardcoded** in Edge Functions rather than database-driven
+- **Three distinct model types** (text, image, research) with different API patterns, but no explicit classification in the database
+- **Confusing split** between `/prompts` and `/settings` pages with overlapping concerns
+
+The user had a breakthrough insight: "Doesn't that feel a little fucking insane? Couldn't we have one universal edge function?"
+
+### The Vision
+
+Consolidate everything into:
+1. **One universal Edge Function** (`POST /functions/v1/generate`) that handles all AI generation
+2. **One Prompt Studio UI** with tabs for Templates, Models, Destinations, Guidelines, and Test
+3. **Database-driven everything** — zero hardcoded values, full CRUD for all configuration
+
+### What I Attempted (Phase 1: Database Schema)
+
+Phase 1 focuses on preparing the database schema without breaking existing code:
+
+1. **Extend `ai_models` table** with:
+   - `model_type` classification ('text', 'image', 'research')
+   - Prompting guidance columns (system_prompt_tips, preferred_format, quirks)
+   - Type-specific config (image_config JSONB, research_config JSONB)
+   - Default parameters (temperature, max_tokens)
+   - API notes and endpoint overrides
+
+2. **Create `destinations` table** for platform-specific configuration:
+   - YouTube, TikTok, Substack, LinkedIn, Twitter, etc.
+   - Each has specs (aspect ratios, character limits), prompt instructions, tone modifiers
+
+3. **Add `examples` column** to `brand_guidelines` for demonstration content
+
+4. **Seed destinations** with 8 platforms across 3 categories (video, social, newsletter)
+
+5. **Seed model configs** with comprehensive type-specific settings for all 18+ models
+
+6. **Migrate voice_guidelines** to brand_guidelines with category='voice'
+
+### What Happened
+
+**Migration 1: Extend ai_models** (`20241228000001_extend_ai_models.sql`)
+- Added `model_type` column with CHECK constraint for 'text', 'image', 'research'
+- Added prompting guidance: system_prompt_tips, preferred_format, format_instructions, quirks
+- Added type-specific JSONB configs: image_config, research_config
+- Added API specifics: api_endpoint_override, api_notes
+- Added defaults: default_temperature (0.7), default_max_tokens (4096)
+- All columns are nullable or have defaults — existing code unaffected
+
+**Migration 2: Create destinations** (`20241228000002_create_destinations.sql`)
+- Created destinations table with slug, name, category, specs, prompt_instructions, tone_modifiers
+- Added RLS policies (authenticated users can read, service role can manage)
+- Added trigger for updated_at
+
+**Migration 3: Add examples to brand_guidelines** (`20241228000003_add_guideline_examples.sql`)
+- Added examples JSONB column with default empty array
+- This will be used for showing example content that demonstrates each guideline
+
+**Migration 4: Seed destinations** (`20241228000004_seed_destinations.sql`)
+- Seeded 8 destinations across 3 categories:
+  - **Newsletter**: Substack
+  - **Video (long-form)**: YouTube
+  - **Video (short-form)**: TikTok, YouTube Shorts, Instagram Reels
+  - **Social**: LinkedIn, Twitter/X, Facebook
+- Each has category-appropriate specs and prompt instructions
+- Example: YouTube has `[B-ROLL: description]` markers, TikTok has "hook in first 2 seconds"
+
+**Migration 5: Seed model configs** (`20241228000005_seed_model_configs.sql`)
+- This was the big one — comprehensive configuration for all AI models:
+  - **Anthropic Claude** (text): XML-structured prompting tips, 0.7 temp
+  - **Google Gemini** (text): Markdown preference, massive context windows
+  - **Perplexity** (research): Citation handling, 0.3 temp for accuracy
+  - **Google Imagen** (image): Aspect ratio-based config, no negative prompts
+  - **OpenAI DALL-E** (image): Size-based config (1024x1024, etc.)
+  - **BFL FLUX** (image): Pixel-based config, supports negative prompts
+- Added Nano Banana Pro (google/gemini-3-pro-image) with special capabilities
+- Each model gets appropriate provider_options_key for Vercel AI SDK
+
+**Migration 6: Migrate voice_guidelines** (`20241228000006_migrate_voice_guidelines.sql`)
+- Copies voice_guidelines to brand_guidelines with category='voice'
+- Generates unique slugs from name + UUID fragment
+- Does NOT drop voice_guidelines yet (cleanup in Phase 5)
+- Migrated 0 rows (no voice guidelines existed yet)
+
+**Push to Supabase**
+- Used `--include-all` flag since migrations were dated before last remote migration
+- All 6 migrations applied successfully
+- No errors, no data loss
+
+### Technical Decisions Made
+
+**1. Three Model Types, Not Two**
+Initially considered just "text" and "image", but Perplexity requires special handling:
+- Returns `citations[]` array in response (other models don't)
+- Needs lower temperature (0.3) for factual accuracy
+- Different response parsing logic needed
+
+**2. Provider-Specific Image Config**
+Image models need different parameters based on provider:
+- **Google**: Uses `aspectRatio` (e.g., "16:9")
+- **OpenAI**: Uses `size` (e.g., "1024x1024")
+- **BFL**: Uses `width/height` pixels
+
+The `image_config.provider_options_key` field tells the universal Edge Function which format to use.
+
+**3. Destinations vs Outputs**
+Considered calling this table "outputs" or "platforms" but "destinations" is clearer — it's WHERE the content is going, which determines HOW it should be formatted.
+
+**4. Nullable New Columns**
+All new columns are nullable or have sensible defaults. This means:
+- Existing code continues to work unchanged
+- Migrations are non-breaking
+- We can populate data incrementally
+
+**5. Voice Guidelines Migration Approach**
+Rather than modifying voice_guidelines in place, we:
+1. Copy to brand_guidelines (preserves original)
+2. Mark voice_guidelines as DEPRECATED in comments
+3. Drop in Phase 5 after verifying everything works
+
+This is defensive migration — rollback is trivial.
+
+### Lessons Learned
+
+1. **Migration Ordering Matters**: Supabase applies migrations alphabetically by filename, not by creation date. Had to use `--include-all` flag for migrations dated before the last remote migration.
+
+2. **Model-Specific Knowledge is Valuable**: Each AI model has quirks. Claude loves XML. Gemini has massive context. FLUX supports negative prompts. Storing this in the database means we can leverage it in prompts.
+
+3. **Non-Breaking First**: By making all schema changes additive (new columns with defaults), we can evolve the database without breaking existing code. The universal Edge Function (Phase 2) will read these new columns; existing functions ignore them.
+
+4. **The Three Model Types Are Real**: Text, image, and research models genuinely need different handling. This isn't just classification — it determines API patterns, response parsing, and available options.
+
+### Files Created
+
+```
+supabase/migrations/
+├── 20241228000001_extend_ai_models.sql      # Model type + configs
+├── 20241228000002_create_destinations.sql   # Destinations table
+├── 20241228000003_add_guideline_examples.sql # Examples column
+├── 20241228000004_seed_destinations.sql     # 8 platforms seeded
+├── 20241228000005_seed_model_configs.sql    # All models configured
+└── 20241228000006_migrate_voice_guidelines.sql # Voice → Brand migration
+
+plans/
+└── meta-prompt-assembly-refactor.md         # Full refactor plan (~1000 lines)
+```
+
+### Database Schema Changes Summary
+
+**ai_models table now has:**
+```sql
+model_type TEXT ('text' | 'image' | 'research')
+system_prompt_tips TEXT
+preferred_format TEXT
+format_instructions TEXT
+quirks JSONB
+image_config JSONB  -- provider_options_key, dimensions, aspect_ratios
+research_config JSONB -- returns_citations, recency options
+api_endpoint_override TEXT
+api_notes TEXT
+default_temperature NUMERIC(3,2)
+default_max_tokens INTEGER
+```
+
+**destinations table (new):**
+```sql
+slug TEXT UNIQUE
+name TEXT
+category TEXT ('video' | 'social' | 'newsletter')
+specs JSONB
+prompt_instructions TEXT
+tone_modifiers JSONB
+is_active BOOLEAN
+sort_order INTEGER
+```
+
+### Suggestions for Next Steps
+
+**Phase 2: Universal Edge Function**
+- Create `supabase/functions/generate/index.ts`
+- Implement assembly logic that:
+  1. Loads prompt template by slug
+  2. Loads model config (with type-specific handling)
+  3. Loads destination config (if specified)
+  4. Loads user guidelines
+  5. Assembles system prompt with all variables
+  6. Calls appropriate AI handler (text/image/research)
+  7. Logs the call and returns structured response
+
+**Phase 3: Frontend Migration**
+- Create `useGenerate()` hook
+- Update each page to use new endpoint
+- Regression test full journey
+
+**Phase 4: Prompt Studio UI**
+- Build the tabbed interface
+- The "Test" tab is the killer feature — preview assembled prompts before execution
+
+**Phase 5: Cleanup**
+- Delete 10 old Edge Functions
+- Drop voice_guidelines table
+- Remove obsolete app_settings
+
+---
+
+## [2024-12-28 - Session] Meta Prompt Assembly System Refactor - Phase 2
+
+### What I Attempted
+
+Phase 2 focused on creating the universal Edge Function that consolidates all 10 existing functions into one.
+
+### What Happened
+
+**Created Shared Utilities:**
+- `supabase/functions/_shared/models.ts` - Model configuration loader with type-specific handling
+- `supabase/functions/_shared/destinations.ts` - Destination configuration loader
+
+**Created Universal Edge Function:**
+- `supabase/functions/generate/index.ts` - The one function to rule them all
+
+**Key Features of Universal Endpoint:**
+
+1. **Three Model Types Handled Differently:**
+   - **Text Models**: Stream via SSE, standard chat completions
+   - **Image Models**: Use `/images/generations` endpoint with provider-specific configs
+   - **Research Models**: Parse citations array from Perplexity response
+
+2. **Provider-Specific Image Config:**
+   - Google models use `aspectRatio`
+   - OpenAI models use `size`
+   - BFL models use `width/height` pixels
+
+3. **Destination-Aware Assembly:**
+   - Loads destination specs (character limits, aspect ratios, etc.)
+   - Builds `{{destination_requirements}}` variable for prompt interpolation
+   - Tone modifiers automatically applied
+
+4. **Full AI Logging:**
+   - Every call logged to `ai_call_logs` table
+   - Includes full prompt, response, token counts, duration
+
+**Authentication Bug Fixed:**
+- Initial deployment returned `Cannot read properties of undefined (reading 'getUser')`
+- Issue: `getAuthenticatedUser()` was being called with `Request` instead of `SupabaseClient`
+- Fixed by properly extracting auth header and creating client first
+
+**Successful Tests:**
+- Text generation: Returned themes and insights correctly
+- Destination override: YouTube destination specs applied to response
+
+### Files Created
+
+```
+supabase/functions/
+├── _shared/
+│   ├── models.ts        # loadModelConfig(), loadAvailableModels()
+│   └── destinations.ts  # loadDestination(), buildDestinationRequirements()
+└── generate/
+    └── index.ts         # Universal generate endpoint
+```
+
+### API Design
+
+**Request:**
+```typescript
+POST /functions/v1/generate
+{
+  prompt_slug: string;       // Required: e.g., "brain_dump_parser"
+  session_id?: string;       // Optional: for logging/state
+  variables: Record<string, string>;  // Template variables
+  overrides?: {
+    model_id?: string;       // Override prompt's default model
+    destination_slug?: string; // Apply platform-specific requirements
+    temperature?: number;
+    max_tokens?: number;
+    guideline_overrides?: Record<string, boolean>;
+  };
+  stream?: boolean;          // Enable SSE streaming (text only)
+}
+```
+
+**Response (text):**
+```typescript
+{
+  success: true,
+  content: string,          // AI response
+  meta: {
+    model_used: string,
+    model_type: "text" | "image" | "research",
+    prompt_version: number,
+    destination_applied?: string,
+    tokens_in: number,
+    tokens_out: number,
+    duration_ms: number
+  }
+}
+```
+
+**Response (image):**
+```typescript
+{
+  success: true,
+  image: {
+    base64: string,
+    media_type: string,
+    storage_url?: string   // If uploaded to Supabase Storage
+  },
+  meta: { ... }
+}
+```
+
+**Response (research):**
+```typescript
+{
+  success: true,
+  content: string,
+  citations: string[],     // URLs from Perplexity
+  meta: { ... }
+}
+```
+
+### Lessons Learned
+
+1. **Model Type Determines API Pattern**: Text models use chat completions, image models use /images/generations, research models need citation parsing. Having `model_type` in the database makes the universal function possible.
+
+2. **Auth Header Must Be Extracted Manually**: Supabase Edge Functions receive the auth token in the Authorization header, but you must manually create a client with it — the automatic client doesn't work for user context.
+
+3. **Provider Options Vary Significantly**: Google uses `aspectRatio`, OpenAI uses `size`, BFL uses `width/height`. Storing `provider_options_key` in the model config enables automatic adaptation.
+
+4. **SSE Streaming Requires Special Handling**: The streaming response needs to write `data: ` prefix and `data: [DONE]` suffix to conform to SSE standard that the frontend expects.
+
+---
+
+## [2024-12-28 - Session] Meta Prompt Assembly System Refactor - Phase 3
+
+### What I Attempted
+
+Phase 3 focused on migrating the frontend from direct Edge Function calls to the new universal endpoint via a React hook.
+
+### What Happened
+
+**Created Universal Generate Hook:**
+- `src/hooks/use-generate.ts` with three exports:
+  - `useGenerate()` - Main hook for all generation
+  - `useGenerateJSON<T>()` - Convenience hook that parses JSON responses
+  - `useResearch()` - Convenience hook for Perplexity research
+
+**Updated All Dashboard Pages:**
+
+| Page | Old Endpoint(s) | New Usage |
+|------|-----------------|-----------|
+| `/create` | `parse-brain-dump` | `useGenerateJSON` with `brain_dump_parser` |
+| `/research` | `generate-research` | `useGenerateJSON` with `generate_research` |
+| `/outline` | `generate-outlines` | `useGenerateJSON` with `generate_outlines` |
+| `/draft` | `generate-draft`, `check-voice` | `useGenerate` (streaming) + `useGenerateJSON` |
+| `/outputs` | `generate-youtube-script`, `generate-tiktok-script`, `generate-image-prompt`, `generate-image` | Multiple `useGenerateJSON` and `useGenerate` hooks |
+
+**Pattern Used:**
+
+```tsx
+// Before: Direct fetch
+const response = await fetch(
+  `${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/generate-research`,
+  {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "Authorization": `Bearer ${session.access_token}`,
+    },
+    body: JSON.stringify({ theme, description, session_id }),
+  }
+);
+const data = await response.json();
+
+// After: Universal hook
+const { generateJSON, isLoading, error } = useGenerateJSON<ResearchResult>();
+
+const result = await generateJSON({
+  prompt_slug: "generate_research",
+  session_id: sessionId || undefined,
+  variables: {
+    content: theme.trim(),
+    description: additionalContext.trim() || "",
+  },
+  overrides: {
+    model_id: "perplexity/sonar-pro",
+  },
+});
+```
+
+**TypeScript Fixes Required:**
+- Added `loadError` state for database loading errors (separate from generation errors)
+- Fixed `session_id` type coercion (`null` → `undefined`)
+
+**Build Verification:**
+- TypeScript passes with no errors
+- Next.js build succeeds
+- All pages generate correctly
+
+### Files Created/Modified
+
+```
+src/hooks/
+└── use-generate.ts          # NEW: Universal generate hook
+
+src/app/(dashboard)/
+├── create/page.tsx          # Updated: useGenerateJSON
+├── research/page.tsx        # Updated: useGenerateJSON
+├── outline/page.tsx         # Updated: useGenerateJSON
+├── draft/page.tsx           # Updated: useGenerate (streaming) + useGenerateJSON
+└── outputs/page.tsx         # Updated: 4x useGenerateJSON/useGenerate hooks
+```
+
+### Hook API
+
+```typescript
+interface GenerateOptions {
+  prompt_slug: string;
+  session_id?: string;
+  variables: Record<string, string>;
+  overrides?: {
+    model_id?: string;
+    destination_slug?: string;
+    temperature?: number;
+    max_tokens?: number;
+    guideline_overrides?: Record<string, boolean>;
+  };
+  stream?: boolean;
+}
+
+// Main hook
+const { generate, isLoading, result, error, streamedContent, reset } = useGenerate();
+
+// JSON parsing variant
+const { generateJSON, isLoading, error } = useGenerateJSON<T>();
+
+// Research convenience hook
+const { research, isLoading, error } = useResearch();
+```
+
+### Benefits of New Architecture
+
+1. **Single Point of Change**: Any prompt assembly logic changes happen in one place (the Edge Function)
+
+2. **Type Safety**: `useGenerateJSON<T>()` provides typed responses with automatic JSON parsing
+
+3. **Streaming Support**: The hook handles SSE parsing and state updates automatically
+
+4. **Error Handling**: Consistent error handling across all pages through the hook
+
+5. **Loading States**: Built-in `isLoading` state eliminates boilerplate
+
+6. **Model/Destination Flexibility**: Any page can now request any model or destination with simple override options
+
+### Lessons Learned
+
+1. **Separate Loading Errors from Generation Errors**: Pages that load data from the database before generating need separate error states. The hook manages generation errors; the component manages loading errors.
+
+2. **Type Coercion for Optional Fields**: TypeScript distinguishes `null` from `undefined`. When passing `sessionId || undefined`, it correctly converts `null` to `undefined` for optional parameters.
+
+3. **Multiple Hooks Per Page is Fine**: The outputs page uses 4 different hook instances for different generation types. Each manages its own state independently.
+
+4. **Streaming State Updates**: The `streamedContent` state in the hook updates progressively, allowing the UI to show content as it arrives.
+
+---
+
+## Phase 3 Complete!
+
+**Status:** Frontend migration completed successfully
+- Universal generate hook created ✓
+- All 5 dashboard pages migrated ✓
+- TypeScript passes ✓
+- Build succeeds ✓
+
+**Next:**
+- Phase 4: Prompt Studio UI
+- Phase 5: Cleanup old Edge Functions
+- Update CHANGELOG.md

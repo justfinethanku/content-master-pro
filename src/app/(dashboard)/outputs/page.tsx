@@ -20,6 +20,7 @@ import {
   Sparkles,
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
+import { useGenerate, useGenerateJSON } from "@/hooks/use-generate";
 import { GuidelineToggle, useGuidelineOverrides } from "@/components/guideline-toggle";
 
 interface DraftData {
@@ -97,25 +98,31 @@ export default function OutputsPage() {
 
   // YouTube state
   const [youtubeScript, setYoutubeScript] = useState<YouTubeScript | null>(null);
-  const [isGeneratingYoutube, setIsGeneratingYoutube] = useState(false);
 
   // TikTok state
   const [tiktokResult, setTiktokResult] = useState<TikTokResult | null>(null);
-  const [isGeneratingTiktok, setIsGeneratingTiktok] = useState(false);
 
   // Image prompts state
   const [imagePrompts, setImagePrompts] = useState<ImagePromptResult | null>(null);
-  const [isGeneratingImages, setIsGeneratingImages] = useState(false);
   const [imageType, setImageType] = useState<"substack_header" | "youtube_thumbnail" | "social_share">("substack_header");
 
   // Generated images state (indexed by prompt index)
   const [generatedImages, setGeneratedImages] = useState<Record<number, GeneratedImage>>({});
   const [generatingImageIndex, setGeneratingImageIndex] = useState<number | null>(null);
 
-  const [error, setError] = useState<string | null>(null);
-
   // Guideline overrides for image generation
   const { overrides: guidelineOverrides, handleChange: handleGuidelineChange } = useGuidelineOverrides();
+
+  // Local error for loading
+  const [loadError, setLoadError] = useState<string | null>(null);
+
+  // Use the universal generate hooks
+  const { generateJSON: generateYoutubeJSON, isLoading: isGeneratingYoutube, error: youtubeError } = useGenerateJSON<YouTubeScript>();
+  const { generateJSON: generateTiktokJSON, isLoading: isGeneratingTiktok, error: tiktokError } = useGenerateJSON<TikTokResult>();
+  const { generateJSON: generateImagePromptsJSON, isLoading: isGeneratingImages, error: imagePromptsError } = useGenerateJSON<ImagePromptResult>();
+  const { generate: generateImageRaw, isLoading: isGeneratingImage, error: imageError } = useGenerate();
+
+  const error = loadError || youtubeError?.message || tiktokError?.message || imagePromptsError?.message || imageError?.message || null;
 
   // Load draft from database using session_id
   useEffect(() => {
@@ -139,7 +146,7 @@ export default function OutputsPage() {
 
         if (draftError) {
           console.error("Failed to load draft:", draftError);
-          setError("Failed to load draft data");
+          setLoadError("Failed to load draft data");
           setIsLoadingDraft(false);
           return;
         }
@@ -183,7 +190,7 @@ export default function OutputsPage() {
         }
       } catch (err) {
         console.error("Error loading draft:", err);
-        setError("Failed to load draft data");
+        setLoadError("Failed to load draft data");
       } finally {
         setIsLoadingDraft(false);
       }
@@ -195,192 +202,103 @@ export default function OutputsPage() {
   const generateYoutubeScript = useCallback(async () => {
     if (!draftData) return;
 
-    setIsGeneratingYoutube(true);
-    setError(null);
+    // Use the universal generate endpoint with YouTube destination
+    const result = await generateYoutubeJSON({
+      prompt_slug: "youtube_script_writer",
+      session_id: sessionId || undefined,
+      variables: {
+        content: draftData.content,
+        title: draftData.title,
+        target_length: "medium",
+      },
+      overrides: {
+        destination_slug: "youtube",
+      },
+    });
 
-    try {
-      const supabase = createClient();
-      const { data: { session } } = await supabase.auth.getSession();
-
-      if (!session) {
-        setError("Please log in to continue");
-        return;
-      }
-
-      const response = await fetch(
-        `${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/generate-youtube-script`,
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "Authorization": `Bearer ${session.access_token}`,
-          },
-          body: JSON.stringify({
-            title: draftData.title,
-            draft_content: draftData.content,
-            target_length: "medium",
-            session_id: sessionId || undefined,
-          }),
-        }
-      );
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || "Failed to generate YouTube script");
-      }
-
-      const data = await response.json();
-      setYoutubeScript(data.result);
-    } catch (err) {
-      console.error("YouTube script error:", err);
-      setError(err instanceof Error ? err.message : "Something went wrong");
-    } finally {
-      setIsGeneratingYoutube(false);
+    if (result) {
+      setYoutubeScript(result);
     }
-  }, [draftData, sessionId]);
+  }, [draftData, sessionId, generateYoutubeJSON]);
 
   const generateTiktokScripts = useCallback(async () => {
     if (!draftData) return;
 
-    setIsGeneratingTiktok(true);
-    setError(null);
+    // Use the universal generate endpoint with TikTok destination
+    const result = await generateTiktokJSON({
+      prompt_slug: "tiktok_script_writer",
+      session_id: sessionId || undefined,
+      variables: {
+        content: draftData.content,
+        title: draftData.title,
+        num_scripts: "3",
+      },
+      overrides: {
+        destination_slug: "tiktok",
+      },
+    });
 
-    try {
-      const supabase = createClient();
-      const { data: { session } } = await supabase.auth.getSession();
-
-      if (!session) {
-        setError("Please log in to continue");
-        return;
-      }
-
-      const response = await fetch(
-        `${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/generate-tiktok-script`,
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "Authorization": `Bearer ${session.access_token}`,
-          },
-          body: JSON.stringify({
-            title: draftData.title,
-            draft_content: draftData.content,
-            num_scripts: 3,
-            session_id: sessionId || undefined,
-          }),
-        }
-      );
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || "Failed to generate TikTok scripts");
-      }
-
-      const data = await response.json();
-      setTiktokResult(data.result);
-    } catch (err) {
-      console.error("TikTok script error:", err);
-      setError(err instanceof Error ? err.message : "Something went wrong");
-    } finally {
-      setIsGeneratingTiktok(false);
+    if (result) {
+      setTiktokResult(result);
     }
-  }, [draftData, sessionId]);
+  }, [draftData, sessionId, generateTiktokJSON]);
 
   const generateImagePrompts = useCallback(async () => {
     if (!draftData) return;
 
-    setIsGeneratingImages(true);
-    setError(null);
+    // Use the universal generate endpoint
+    const result = await generateImagePromptsJSON({
+      prompt_slug: "image_prompt_generator",
+      session_id: sessionId || undefined,
+      variables: {
+        content: draftData.content.substring(0, 1000),
+        title: draftData.title,
+        image_type: imageType,
+      },
+      overrides: {
+        guideline_overrides: Object.keys(guidelineOverrides).length > 0 ? guidelineOverrides : undefined,
+      },
+    });
 
-    try {
-      const supabase = createClient();
-      const { data: { session } } = await supabase.auth.getSession();
-
-      if (!session) {
-        setError("Please log in to continue");
-        return;
-      }
-
-      const response = await fetch(
-        `${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/generate-image-prompt`,
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "Authorization": `Bearer ${session.access_token}`,
-          },
-          body: JSON.stringify({
-            title: draftData.title,
-            draft_excerpt: draftData.content.substring(0, 1000),
-            image_type: imageType,
-            guideline_overrides: Object.keys(guidelineOverrides).length > 0 ? guidelineOverrides : undefined,
-            session_id: sessionId || undefined,
-          }),
-        }
-      );
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || "Failed to generate image prompts");
-      }
-
-      const data = await response.json();
-      setImagePrompts(data.result);
-    } catch (err) {
-      console.error("Image prompt error:", err);
-      setError(err instanceof Error ? err.message : "Something went wrong");
-    } finally {
-      setIsGeneratingImages(false);
+    if (result) {
+      setImagePrompts(result);
     }
-  }, [draftData, imageType, guidelineOverrides, sessionId]);
+  }, [draftData, imageType, guidelineOverrides, sessionId, generateImagePromptsJSON]);
 
   const generateImage = useCallback(async (promptIndex: number, prompt: ImagePrompt) => {
     setGeneratingImageIndex(promptIndex);
-    setError(null);
 
-    try {
-      const supabase = createClient();
-      const { data: { session } } = await supabase.auth.getSession();
+    // Use the universal generate endpoint for image generation
+    const result = await generateImageRaw({
+      prompt_slug: "image_generator",
+      session_id: sessionId || undefined,
+      variables: {
+        content: prompt.prompt,
+        negative_prompt: prompt.negative_prompt || "",
+        aspect_ratio: prompt.aspect_ratio,
+      },
+      overrides: {
+        // Use the suggested model from the prompt or default to Imagen
+        model_id: prompt.suggested_model.includes("flux")
+          ? "bfl/flux-pro-1.1"
+          : prompt.suggested_model.includes("dall")
+          ? "openai/dall-e-3"
+          : "google/imagen-4.0-generate",
+      },
+    });
 
-      if (!session) {
-        setError("Please log in to continue");
-        return;
-      }
-
-      const response = await fetch(
-        `${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/generate-image`,
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "Authorization": `Bearer ${session.access_token}`,
-          },
-          body: JSON.stringify({
-            prompt: prompt.prompt,
-            negative_prompt: prompt.negative_prompt,
-            aspect_ratio: prompt.aspect_ratio,
-            session_id: sessionId || undefined,
-          }),
-        }
-      );
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || "Failed to generate image");
-      }
-
-      const data = await response.json();
+    if (result?.success && result.image) {
       setGeneratedImages(prev => ({
         ...prev,
-        [promptIndex]: data.result,
+        [promptIndex]: {
+          image_base64: result.image?.base64,
+          image_url: result.image?.storage_url,
+          model_used: result.meta.model_used,
+        },
       }));
-    } catch (err) {
-      console.error("Image generation error:", err);
-      setError(err instanceof Error ? err.message : "Failed to generate image");
-    } finally {
-      setGeneratingImageIndex(null);
     }
-  }, [sessionId]);
+    setGeneratingImageIndex(null);
+  }, [sessionId, generateImageRaw]);
 
   const downloadImage = useCallback((imageBase64: string, filename: string) => {
     const link = document.createElement("a");
