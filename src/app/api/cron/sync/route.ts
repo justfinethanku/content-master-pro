@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServiceClient } from "@/lib/supabase/server";
 import { getPineconeClient } from "@/lib/pinecone/client";
+import { openai } from "@ai-sdk/openai";
+import { embedMany } from "ai";
+import { chunkContent, type ChunkMetadata } from "@/lib/chunking";
 
 /**
  * Daily cron job to sync all configured newsletters
@@ -25,8 +28,8 @@ interface RSSItem {
   enclosure?: string;
 }
 
-const EMBEDDING_MODEL = "multilingual-e5-large";
-const INDEX_NAME = process.env.PINECONE_INDEX || "content-master-pro";
+// Use new index with 3072 dimensions
+const INDEX_NAME = process.env.PINECONE_INDEX || "content-master-pro-v2";
 
 function parseRSSFeed(xml: string): RSSItem[] {
   const items: RSSItem[] = [];
@@ -84,20 +87,15 @@ function stripHtml(html: string): string {
     .trim();
 }
 
-async function generateEmbedding(text: string): Promise<number[]> {
-  const client = getPineconeClient();
-  const truncated = text.slice(0, 8000);
-  const embeddings = await client.inference.embed(
-    EMBEDDING_MODEL,
-    [truncated],
-    { inputType: "passage", truncate: "END" }
-  );
-
-  const embedding = embeddings.data[0];
-  if (!("values" in embedding)) {
-    throw new Error("Expected dense embedding with values");
-  }
-  return embedding.values;
+/**
+ * Generate embeddings for multiple texts using Vercel AI SDK
+ */
+async function generateEmbeddings(texts: string[]): Promise<number[][]> {
+  const { embeddings } = await embedMany({
+    model: openai.embedding("text-embedding-3-large"),
+    values: texts,
+  });
+  return embeddings;
 }
 
 export async function GET(request: NextRequest) {
@@ -110,7 +108,7 @@ export async function GET(request: NextRequest) {
   }
 
   const startTime = Date.now();
-  const results: Array<{ source: string; synced: number; errors: number }> = [];
+  const results: Array<{ source: string; synced: number; chunks: number; errors: number }> = [];
 
   try {
     const supabase = await createServiceClient();
@@ -183,31 +181,55 @@ export async function GET(request: NextRequest) {
         const ns = index.namespace(namespace);
 
         let syncedCount = 0;
+        let chunksUpserted = 0;
         let errorCount = 0;
 
         for (const item of newItems) {
           try {
             const plainContent = stripHtml(item.content || item.description);
-            const contentPreview = plainContent.slice(0, 500);
-            const embeddingText = `${item.title}\n\n${plainContent}`;
-            const embedding = await generateEmbedding(embeddingText);
-            const pineconeId = `${manifest.source}-${Buffer.from(item.guid || item.link).toString("base64").slice(0, 20)}`;
+            const publishedDate = item.pubDate ? new Date(item.pubDate) : new Date();
 
-            await ns.upsert([
-              {
-                id: pineconeId,
-                values: embedding,
-                metadata: {
-                  title: item.title,
-                  author: item.creator,
-                  source: manifest.source,
-                  url: item.link,
-                  ...(item.pubDate && { published_at: new Date(item.pubDate).toISOString() }),
-                  content_preview: contentPreview,
-                },
+            // Create chunk metadata
+            const chunkMetadata: ChunkMetadata = {
+              title: item.title,
+              author: item.creator || (manifest.source.includes("jon") ? "Jonathan Edwards" : "Nate"),
+              url: item.link,
+              published: publishedDate.toISOString().split("T")[0],
+              source: manifest.source.includes("jon") ? "jon_substack" : "nate_substack",
+            };
+
+            // Chunk the content
+            const chunks = chunkContent(plainContent, chunkMetadata);
+
+            // Generate embeddings for all chunks
+            const chunkTexts = chunks.map((chunk) => chunk.content);
+            const embeddings = await generateEmbeddings(chunkTexts);
+
+            // Create unique base ID for Pinecone
+            const baseId = `${manifest.source}-${Buffer.from(item.guid || item.link).toString("base64").slice(0, 20)}`;
+
+            // Upsert all chunks to Pinecone
+            const vectors = chunks.map((chunk, idx) => ({
+              id: `${baseId}-chunk-${chunk.chunkIndex}`,
+              values: embeddings[idx],
+              metadata: {
+                // Full chunk content with YAML frontmatter
+                content: chunk.content,
+                // Flat metadata fields for Pinecone filtering
+                title: item.title,
+                author: chunkMetadata.author,
+                source: chunkMetadata.source,
+                url: item.link,
+                published_at: publishedDate.toISOString(),
+                chunk_index: chunk.chunkIndex,
+                chunk_count: chunk.chunkCount,
               },
-            ]);
+            }));
 
+            await ns.upsert(vectors);
+            chunksUpserted += vectors.length;
+
+            // Store in database
             await supabase.from("imported_posts").insert({
               user_id: manifest.user_id,
               source: manifest.source,
@@ -216,12 +238,13 @@ export async function GET(request: NextRequest) {
               title: item.title,
               subtitle: item.description?.slice(0, 200),
               content: item.content || item.description,
-              author: item.creator,
-              ...(item.pubDate && { published_at: new Date(item.pubDate).toISOString() }),
-              pinecone_id: pineconeId,
+              author: chunkMetadata.author,
+              published_at: publishedDate.toISOString(),
+              pinecone_id: `${baseId}-chunk-0`,
               metadata: {
                 enclosure: item.enclosure,
                 synced_at: new Date().toISOString(),
+                chunk_count: chunks.length,
               },
             });
 
@@ -251,6 +274,7 @@ export async function GET(request: NextRequest) {
         results.push({
           source: manifest.source,
           synced: syncedCount,
+          chunks: chunksUpserted,
           errors: errorCount,
         });
       } catch (err) {
@@ -267,6 +291,7 @@ export async function GET(request: NextRequest) {
         results.push({
           source: manifest.source,
           synced: 0,
+          chunks: 0,
           errors: 1,
         });
       }
@@ -274,6 +299,7 @@ export async function GET(request: NextRequest) {
 
     const duration = Date.now() - startTime;
     const totalSynced = results.reduce((sum, r) => sum + r.synced, 0);
+    const totalChunks = results.reduce((sum, r) => sum + r.chunks, 0);
     const totalErrors = results.reduce((sum, r) => sum + r.errors, 0);
 
     return NextResponse.json({
@@ -282,6 +308,7 @@ export async function GET(request: NextRequest) {
       summary: {
         newsletters: results.length,
         totalSynced,
+        totalChunks,
         totalErrors,
         duration: `${duration}ms`,
       },
