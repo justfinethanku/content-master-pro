@@ -1,7 +1,9 @@
+import { openai } from "@ai-sdk/openai";
+import { embed } from "ai";
 import { getPineconeClient, PINECONE_NAMESPACES } from "./client";
 
-const EMBEDDING_MODEL = "multilingual-e5-large";
-const INDEX_NAME = process.env.PINECONE_INDEX || "content-master-pro";
+// Use new index with 3072 dimensions
+const INDEX_NAME = process.env.PINECONE_INDEX || "content-master-pro-v2";
 const MAX_CONTENT_LENGTH = 8000; // Characters to truncate to for embedding
 
 export interface ResearchMetadata {
@@ -22,6 +24,8 @@ export interface EmbedResearchResult {
 
 /**
  * Embed research content and upsert to Pinecone
+ *
+ * Uses Vercel AI SDK with text-embedding-3-large (3072 dimensions)
  *
  * @param researchId - Database ID of the research record
  * @param query - Original search query
@@ -45,19 +49,11 @@ export async function embedResearch(
     // Truncate content for embedding (model has token limits)
     const contentForEmbedding = response.slice(0, MAX_CONTENT_LENGTH);
 
-    // Generate embedding using Pinecone Inference API
-    const embeddings = await client.inference.embed(
-      EMBEDDING_MODEL,
-      [contentForEmbedding],
-      { inputType: "passage", truncate: "END" }
-    );
-
-    // Extract values from dense embedding
-    const embedding = embeddings.data[0];
-    if (!("values" in embedding)) {
-      throw new Error("Expected dense embedding with values");
-    }
-    const vector = embedding.values;
+    // Generate embedding using Vercel AI SDK with text-embedding-3-large
+    const { embedding: vector } = await embed({
+      model: openai.embedding("text-embedding-3-large"),
+      value: contentForEmbedding,
+    });
 
     // Create metadata
     const metadata: ResearchMetadata = {
