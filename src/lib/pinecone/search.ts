@@ -1,3 +1,5 @@
+import { openai } from "@ai-sdk/openai";
+import { embed } from "ai";
 import { getPineconeClient } from "./client";
 
 // Namespaces for different sources
@@ -25,14 +27,19 @@ export interface SearchResult {
   source: string;
   url?: string;
   publishedAt?: string;
-  contentPreview: string;
+  content: string; // Full chunk content with frontmatter
+  contentPreview: string; // Legacy field for backward compatibility
+  chunkIndex?: number;
+  chunkCount?: number;
 }
 
-const EMBEDDING_MODEL = "multilingual-e5-large";
-const INDEX_NAME = process.env.PINECONE_INDEX || "content-master-pro";
+// Use new index with 3072 dimensions
+const INDEX_NAME = process.env.PINECONE_INDEX || "content-master-pro-v2";
 
 /**
  * Search for similar content across Jon's and Nate's posts
+ *
+ * Uses Vercel AI SDK with text-embedding-3-large (3072 dimensions)
  */
 export async function searchPosts(options: SearchOptions): Promise<SearchResult[]> {
   const {
@@ -45,19 +52,11 @@ export async function searchPosts(options: SearchOptions): Promise<SearchResult[
   const client = getPineconeClient();
   const index = client.index(INDEX_NAME);
 
-  // Generate query embedding using Pinecone Inference
-  const embeddings = await client.inference.embed(
-    EMBEDDING_MODEL,
-    [query],
-    { inputType: "query", truncate: "END" }
-  );
-
-  // Extract values from embedding (dense embedding has values property)
-  const embedding = embeddings.data[0];
-  if (!("values" in embedding)) {
-    throw new Error("Expected dense embedding with values");
-  }
-  const queryVector = embedding.values;
+  // Generate query embedding using Vercel AI SDK with text-embedding-3-large
+  const { embedding: queryVector } = await embed({
+    model: openai.embedding("text-embedding-3-large"),
+    value: query,
+  });
 
   // Search in each namespace and combine results
   const allResults: SearchResult[] = [];
@@ -82,8 +81,11 @@ export async function searchPosts(options: SearchOptions): Promise<SearchResult[
         author: (metadata?.author as string) || "Unknown",
         source: (metadata?.source as string) || source,
         url: metadata?.url as string,
-        publishedAt: metadata?.published_at as string,
-        contentPreview: (metadata?.content_preview as string) || "",
+        publishedAt: (metadata?.published_at as string) || (metadata?.published as string),
+        content: (metadata?.content as string) || "",
+        contentPreview: (metadata?.content_preview as string) || (metadata?.content as string)?.slice(0, 500) || "",
+        chunkIndex: metadata?.chunk_index as number | undefined,
+        chunkCount: metadata?.chunk_count as number | undefined,
       });
     }
   }
@@ -119,7 +121,10 @@ export async function getPostById(
     author: (metadata?.author as string) || "Unknown",
     source: (metadata?.source as string) || "",
     url: metadata?.url as string,
-    publishedAt: metadata?.published_at as string,
-    contentPreview: (metadata?.content_preview as string) || "",
+    publishedAt: (metadata?.published_at as string) || (metadata?.published as string),
+    content: (metadata?.content as string) || "",
+    contentPreview: (metadata?.content_preview as string) || (metadata?.content as string)?.slice(0, 500) || "",
+    chunkIndex: metadata?.chunk_index as number | undefined,
+    chunkCount: metadata?.chunk_count as number | undefined,
   };
 }
