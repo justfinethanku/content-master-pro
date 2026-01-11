@@ -237,3 +237,191 @@ export interface PineconeNamespaceUpdate {
   is_searchable?: boolean;
   sort_order?: number;
 }
+
+// ============================================================================
+// Partner API Types
+// ============================================================================
+
+// Invite status
+export type PartnerInviteStatus = "pending" | "redeemed" | "expired" | "revoked";
+
+export interface PartnerInvite {
+  id: string;
+  code: string;
+  email: string;
+  created_by: string;
+  expires_at: string;
+  redeemed_at?: string;
+  redeemed_by?: string;
+  status: PartnerInviteStatus;
+  metadata?: Record<string, unknown>;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface PartnerInviteInsert {
+  code: string;
+  email: string;
+  created_by: string;
+  expires_at?: string;
+  metadata?: Record<string, unknown>;
+}
+
+// Partner status
+export type PartnerStatus = "active" | "suspended" | "revoked";
+
+export interface Partner {
+  id: string;
+  user_id: string;
+  organization_name: string;
+  contact_email: string;
+  status: PartnerStatus;
+  rate_limit_per_minute: number;
+  rate_limit_per_day: number;
+  invite_id?: string;
+  metadata?: Record<string, unknown>;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface PartnerInsert {
+  user_id: string;
+  organization_name: string;
+  contact_email: string;
+  status?: PartnerStatus;
+  rate_limit_per_minute?: number;
+  rate_limit_per_day?: number;
+  invite_id?: string;
+  metadata?: Record<string, unknown>;
+}
+
+export interface PartnerUpdate {
+  organization_name?: string;
+  contact_email?: string;
+  status?: PartnerStatus;
+  rate_limit_per_minute?: number;
+  rate_limit_per_day?: number;
+  metadata?: Record<string, unknown>;
+}
+
+// Namespace permissions
+export interface PartnerNamespacePermission {
+  id: string;
+  partner_id: string;
+  namespace_id: string;
+  can_read: boolean;
+  can_write: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface PartnerNamespacePermissionWithNamespace
+  extends PartnerNamespacePermission {
+  pinecone_namespaces: PineconeNamespace;
+}
+
+// API Key status
+export type ApiKeyStatus = "active" | "revoked";
+
+export interface PartnerApiKey {
+  id: string;
+  partner_id: string;
+  key_hash: string;
+  key_prefix: string;
+  name: string;
+  last_used_at?: string;
+  status: ApiKeyStatus;
+  expires_at?: string;
+  metadata?: Record<string, unknown>;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface PartnerApiKeyInsert {
+  partner_id: string;
+  key_hash: string;
+  key_prefix: string;
+  name: string;
+  expires_at?: string;
+  metadata?: Record<string, unknown>;
+}
+
+// API Usage logging
+export interface PartnerApiUsage {
+  id: string;
+  api_key_id: string;
+  partner_id: string;
+  endpoint: string;
+  method: string;
+  namespace_slug?: string;
+  query_params?: Record<string, unknown>;
+  status_code: number;
+  response_time_ms?: number;
+  error_message?: string;
+  ip_address?: string;
+  user_agent?: string;
+  created_at: string;
+}
+
+export interface PartnerApiUsageInsert {
+  api_key_id: string;
+  partner_id: string;
+  endpoint: string;
+  method: string;
+  namespace_slug?: string;
+  query_params?: Record<string, unknown>;
+  status_code: number;
+  response_time_ms?: number;
+  error_message?: string;
+  ip_address?: string;
+  user_agent?: string;
+}
+
+// API response types
+export interface PartnerAuthContext {
+  partner: Partner;
+  apiKey: PartnerApiKey;
+  permissions: PartnerNamespacePermissionWithNamespace[];
+}
+
+export interface RateLimitInfo {
+  limit: number;
+  remaining: number;
+  resetAt: string;
+  dailyLimit: number;
+  dailyRemaining: number;
+  dailyResetAt: string;
+}
+
+export interface PartnerSearchRequest {
+  query: string;
+  namespaces?: string[];
+  topK?: number;
+}
+
+export interface PartnerSearchResponse {
+  results: SearchResult[];
+  query: string;
+  namespaces: string[];
+  count: number;
+  rateLimit: RateLimitInfo;
+}
+
+export interface SearchResult {
+  id: string;
+  score: number;
+  title?: string;
+  content?: string;
+  source?: string;
+  url?: string;
+  metadata?: Record<string, unknown>;
+}
+
+export interface PartnerNamespaceResponse {
+  slug: string;
+  display_name: string;
+  description?: string;
+  source_type?: NamespaceSourceType;
+  can_read: boolean;
+  can_write: boolean;
+}
