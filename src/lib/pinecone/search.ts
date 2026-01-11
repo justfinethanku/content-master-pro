@@ -1,8 +1,7 @@
-import { openai } from "@ai-sdk/openai";
-import { embed } from "ai";
 import { SupabaseClient } from "@supabase/supabase-js";
 import { getPineconeClient, getPineconeIndexName } from "./client";
 import { getSearchableNamespaces, getNamespaceBySlug } from "./namespaces";
+import { generateEmbedding } from "@/lib/ai/embeddings";
 
 export interface SearchOptions {
   query: string;
@@ -44,11 +43,8 @@ export async function searchPosts(
   const client = getPineconeClient();
   const index = client.index(getPineconeIndexName());
 
-  // Generate query embedding using Vercel AI SDK with text-embedding-3-large
-  const { embedding: queryVector } = await embed({
-    model: openai.embedding("text-embedding-3-large"),
-    value: query,
-  });
+  // Generate query embedding using Vercel AI Gateway with text-embedding-3-large
+  const queryVector = await generateEmbedding(query);
 
   // Determine which namespaces to search
   let namespacesToSearch: string[];

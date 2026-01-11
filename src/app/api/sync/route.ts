@@ -2,8 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { getPineconeClient, getPineconeIndexName } from "@/lib/pinecone/client";
 import { getNamespaceBySlug, mapSourceToNamespaceSlug } from "@/lib/pinecone/namespaces";
-import { openai } from "@ai-sdk/openai";
-import { embedMany } from "ai";
+import { generateEmbeddings } from "@/lib/ai/embeddings";
 import { chunkContent, type ChunkMetadata } from "@/lib/chunking";
 
 interface RSSItem {
@@ -87,17 +86,6 @@ function stripHtml(html: string): string {
     .replace(/&#39;/g, "'")
     .replace(/\s+/g, " ")
     .trim();
-}
-
-/**
- * Generate embeddings for multiple texts using Vercel AI SDK
- */
-async function generateEmbeddings(texts: string[]): Promise<number[][]> {
-  const { embeddings } = await embedMany({
-    model: openai.embedding("text-embedding-3-large"),
-    values: texts,
-  });
-  return embeddings;
 }
 
 export async function POST(request: NextRequest) {

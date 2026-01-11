@@ -1,7 +1,6 @@
-import { openai } from "@ai-sdk/openai";
-import { embed } from "ai";
 import { getPineconeClient, getPineconeIndexName } from "./client";
 import { NAMESPACE_SLUGS } from "./namespaces";
+import { generateEmbedding } from "@/lib/ai/embeddings";
 
 const MAX_CONTENT_LENGTH = 8000; // Characters to truncate to for embedding
 
@@ -48,11 +47,8 @@ export async function embedResearch(
     // Truncate content for embedding (model has token limits)
     const contentForEmbedding = response.slice(0, MAX_CONTENT_LENGTH);
 
-    // Generate embedding using Vercel AI SDK with text-embedding-3-large
-    const { embedding: vector } = await embed({
-      model: openai.embedding("text-embedding-3-large"),
-      value: contentForEmbedding,
-    });
+    // Generate embedding using Vercel AI Gateway with text-embedding-3-large
+    const vector = await generateEmbedding(contentForEmbedding);
 
     // Create metadata
     const metadata: ResearchMetadata = {

@@ -19,7 +19,7 @@
  */
 
 import { Pinecone } from "@pinecone-database/pinecone";
-import { openai } from "@ai-sdk/openai";
+import { createOpenAI } from "@ai-sdk/openai";
 import { embedMany } from "ai";
 import { createClient } from "@supabase/supabase-js";
 import * as path from "path";
@@ -28,6 +28,15 @@ import { chunkContent, type ChunkMetadata, type ContentChunk } from "../src/lib/
 
 // Load environment variables
 config({ path: path.join(__dirname, "..", ".env.local") });
+
+// Create OpenAI-compatible provider pointing to Vercel AI Gateway
+const openaiGateway = createOpenAI({
+  apiKey: process.env.VERCEL_AI_GATEWAY_API_KEY,
+  baseURL: "https://ai-gateway.vercel.sh/v1",
+});
+
+// Embedding model via Vercel AI Gateway
+const embeddingModel = openaiGateway.embedding("text-embedding-3-large");
 
 // Configuration
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!;
@@ -221,10 +230,10 @@ async function reindexAll(source: "jon" | "nate" | "all", dryRun: boolean) {
     const textsToEmbed = batch.map((item) => item.chunk.content);
 
     try {
-      // Generate embeddings using Vercel AI SDK with text-embedding-3-large
-      console.log("   Generating embeddings with text-embedding-3-large...");
+      // Generate embeddings using Vercel AI Gateway with text-embedding-3-large
+      console.log("   Generating embeddings with text-embedding-3-large via Vercel AI Gateway...");
       const { embeddings } = await embedMany({
-        model: openai.embedding("text-embedding-3-large"),
+        model: embeddingModel,
         values: textsToEmbed,
       });
 
