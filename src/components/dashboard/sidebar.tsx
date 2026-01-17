@@ -19,11 +19,15 @@ import {
   Key,
   BarChart3,
   BookOpen,
+  Newspaper,
+  Bookmark,
 } from "lucide-react";
 
 const navigation = [
   { name: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
   { name: "Create", href: "/create", icon: Brain },
+  { name: "News Feed", href: "/swipe", icon: Newspaper },
+  { name: "Captures", href: "/captures", icon: Bookmark },
   { name: "Search", href: "/search", icon: Search },
   { name: "History", href: "/history", icon: History },
   { name: "Studio", href: "/studio", icon: FlaskConical },
