@@ -296,6 +296,25 @@ Build the captured items list view.
 
 ---
 
+## Future Enhancement: Translation Layer
+
+**Status:** Pending
+
+The raw RSS feed data (especially GitHub releases) often contains technical version strings and changelog fragments that aren't user-friendly. Before items become swipe cards, we need a "translation layer" where Claude/LLM processes the raw data to:
+
+1. **Humanize headlines** - Turn "v0.2.47-beta.4" into readable titles like "Claude Code: New terminal improvements"
+2. **Summarize content** - Extract key changes from release notes and explain their significance
+3. **Assess impact accurately** - Better than keyword matching for determining minor/major/breaking
+4. **Add context** - Explain why a change matters to AI practitioners
+
+**Implementation approach:**
+- Add a processing step after RSS parsing but before database insert
+- Use Claude Haiku for speed (sonnet for complex releases)
+- Batch process multiple entries per API call to reduce costs
+- Store both raw and processed versions for reference
+
+---
+
 ## Research References
 
 - [Mobile Swipe UI Research](../Research/content-master-pro/2026-01-16-mobile-swipe-ui-pwa-websearch.md)
