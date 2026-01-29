@@ -17,16 +17,12 @@ function getMonthDays(date: Date): Date[] {
   const year = date.getFullYear();
   const month = date.getMonth();
 
-  // First day of the month
   const firstDay = new Date(year, month, 1);
-  // Last day of the month
   const lastDay = new Date(year, month + 1, 0);
 
-  // Start from Sunday of the week containing the first day
   const startDate = new Date(firstDay);
   startDate.setDate(startDate.getDate() - startDate.getDay());
 
-  // End on Saturday of the week containing the last day
   const endDate = new Date(lastDay);
   endDate.setDate(endDate.getDate() + (6 - endDate.getDay()));
 
@@ -56,12 +52,10 @@ function getWeekDays(date: Date): Date[] {
   return days;
 }
 
-// Format date to YYYY-MM-DD for comparison
 function formatDateKey(date: Date): string {
   return date.toISOString().split("T")[0];
 }
 
-// Check if date is today
 function isToday(date: Date): boolean {
   const today = new Date();
   return (
@@ -71,97 +65,61 @@ function isToday(date: Date): boolean {
   );
 }
 
-// Check if date is in current month
 function isCurrentMonth(date: Date, currentDate: Date): boolean {
   return date.getMonth() === currentDate.getMonth();
 }
 
 const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+const WEEKDAYS_FULL = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
 
-// Droppable day cell component
-interface DroppableDayProps {
+// Droppable day cell for month view
+interface DroppableDayMonthProps {
   date: Date;
   projects: ContentProject[];
   inCurrentMonth: boolean;
-  variant: "month" | "week";
 }
 
-function DroppableDay({
-  date,
-  projects,
-  inCurrentMonth,
-  variant,
-}: DroppableDayProps) {
+function DroppableDayMonth({ date, projects, inCurrentMonth }: DroppableDayMonthProps) {
   const dateKey = formatDateKey(date);
   const { setNodeRef, isOver } = useDroppable({
     id: dateKey,
-    data: {
-      date: dateKey,
-      type: "calendar-day",
-    },
+    data: { date: dateKey, type: "calendar-day" },
   });
 
   const today = isToday(date);
 
-  if (variant === "week") {
-    return (
-      <div
-        ref={setNodeRef}
-        className={cn(
-          "p-2 border-r border-border last:border-r-0 bg-background min-h-[300px]",
-          today && "bg-primary/5",
-          isOver && "ring-2 ring-primary ring-inset bg-primary/10"
-        )}
-      >
-        <div className="space-y-2">
-          {projects.map((project) => (
-            <DraggableProjectCard
-              key={project.id}
-              project={project}
-              variant="full"
-            />
-          ))}
-        </div>
-      </div>
-    );
-  }
-
-  // Month view
   return (
     <div
       ref={setNodeRef}
       className={cn(
-        "min-h-[100px] p-1 border-r border-b border-border last:border-r-0",
-        !inCurrentMonth && "bg-muted/50",
-        today && "bg-primary/5",
-        isOver && "ring-2 ring-primary ring-inset bg-primary/10"
+        "min-h-25 p-1.5 border-r border-b border-stone-200 dark:border-stone-800 last:border-r-0",
+        "overflow-hidden",
+        !inCurrentMonth && "bg-stone-50/50 dark:bg-stone-900/30",
+        today && "bg-yellow-50/50 dark:bg-yellow-950/20",
+        isOver && "ring-2 ring-yellow-400 ring-inset bg-yellow-50/80 dark:bg-yellow-950/40"
       )}
     >
       {/* Day number */}
       <div
         className={cn(
-          "text-xs font-medium mb-1 p-1",
+          "text-xs font-medium mb-1.5 px-1",
           today
-            ? "text-primary font-bold"
+            ? "text-yellow-700 dark:text-yellow-400 font-semibold"
             : inCurrentMonth
-            ? "text-foreground"
-            : "text-muted-foreground"
+              ? "text-stone-700 dark:text-stone-300"
+              : "text-stone-400 dark:text-stone-600"
         )}
       >
         {date.getDate()}
       </div>
 
-      {/* Projects */}
-      <div className="space-y-1">
+      {/* Projects - with proper overflow handling */}
+      <div className="space-y-1 overflow-hidden">
         {projects.slice(0, 3).map((project) => (
-          <DraggableProjectCard
-            key={project.id}
-            project={project}
-            variant="compact"
-          />
+          <DraggableProjectCard key={project.id} project={project} variant="compact" />
         ))}
         {projects.length > 3 && (
-          <p className="text-xs text-muted-foreground px-1">
+          <p className="text-[10px] text-stone-500 dark:text-stone-500 px-1 font-medium">
             +{projects.length - 3} more
           </p>
         )}
@@ -170,19 +128,76 @@ function DroppableDay({
   );
 }
 
-export function CalendarGrid({
-  projects,
-  viewMode,
-  currentDate,
-}: CalendarGridProps) {
-  // Get days based on view mode
+// Droppable day cell for week view - gallery style
+interface DroppableDayWeekProps {
+  date: Date;
+  projects: ContentProject[];
+}
+
+function DroppableDayWeek({ date, projects }: DroppableDayWeekProps) {
+  const dateKey = formatDateKey(date);
+  const { setNodeRef, isOver } = useDroppable({
+    id: dateKey,
+    data: { date: dateKey, type: "calendar-day" },
+  });
+
+  const today = isToday(date);
+
+  return (
+    <div
+      ref={setNodeRef}
+      className={cn(
+        "flex flex-col min-h-100",
+        "bg-white dark:bg-stone-950",
+        "border-r border-stone-200 dark:border-stone-800 last:border-r-0",
+        today && "bg-yellow-50/30 dark:bg-yellow-950/10",
+        isOver && "ring-2 ring-yellow-400 ring-inset bg-yellow-50/60 dark:bg-yellow-950/30"
+      )}
+    >
+      {/* Day header */}
+      <div
+        className={cn(
+          "px-3 py-3 border-b border-stone-100 dark:border-stone-800/50",
+          today && "bg-yellow-100/50 dark:bg-yellow-900/20"
+        )}
+      >
+        <p className="text-[11px] font-medium text-stone-500 dark:text-stone-500 uppercase tracking-wide">
+          {WEEKDAYS_FULL[date.getDay()]}
+        </p>
+        <p
+          className={cn(
+            "text-2xl font-semibold mt-0.5",
+            today
+              ? "text-yellow-700 dark:text-yellow-400"
+              : "text-stone-800 dark:text-stone-200"
+          )}
+        >
+          {date.getDate()}
+        </p>
+      </div>
+
+      {/* Projects gallery */}
+      <div className="flex-1 p-3 overflow-y-auto overflow-x-hidden">
+        <div className="space-y-3">
+          {projects.map((project) => (
+            <DraggableProjectCard key={project.id} project={project} variant="full" />
+          ))}
+          {projects.length === 0 && (
+            <p className="text-xs text-stone-400 dark:text-stone-600 text-center py-8">
+              No content scheduled
+            </p>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+export function CalendarGrid({ projects, viewMode, currentDate }: CalendarGridProps) {
   const days = useMemo(() => {
-    return viewMode === "month"
-      ? getMonthDays(currentDate)
-      : getWeekDays(currentDate);
+    return viewMode === "month" ? getMonthDays(currentDate) : getWeekDays(currentDate);
   }, [viewMode, currentDate]);
 
-  // Group projects by date
   const projectsByDate = useMemo(() => {
     const grouped: Record<string, ContentProject[]> = {};
 
@@ -201,49 +216,14 @@ export function CalendarGrid({
 
   if (viewMode === "week") {
     return (
-      <div className="border border-border rounded-lg overflow-hidden">
-        {/* Header */}
-        <div className="grid grid-cols-7 border-b border-border bg-muted">
-          {days.map((day, i) => (
-            <div
-              key={i}
-              className={cn(
-                "p-3 text-center border-r border-border last:border-r-0",
-                isToday(day) && "bg-primary/10"
-              )}
-            >
-              <div className="text-xs font-medium text-muted-foreground">
-                {WEEKDAYS[day.getDay()]}
-              </div>
-              <div
-                className={cn(
-                  "text-lg font-semibold mt-1",
-                  isToday(day)
-                    ? "text-primary"
-                    : "text-foreground"
-                )}
-              >
-                {day.getDate()}
-              </div>
-            </div>
-          ))}
-        </div>
-
-        {/* Content */}
+      <div className="border border-stone-200 dark:border-stone-800 rounded-xl overflow-hidden shadow-sm">
+        {/* Week grid - gallery layout */}
         <div className="grid grid-cols-7">
           {days.map((day, i) => {
             const dateKey = formatDateKey(day);
             const dayProjects = projectsByDate[dateKey] || [];
 
-            return (
-              <DroppableDay
-                key={i}
-                date={day}
-                projects={dayProjects}
-                inCurrentMonth={true}
-                variant="week"
-              />
-            );
+            return <DroppableDayWeek key={i} date={day} projects={dayProjects} />;
           })}
         </div>
       </div>
@@ -252,13 +232,13 @@ export function CalendarGrid({
 
   // Month view
   return (
-    <div className="border border-border rounded-lg overflow-hidden">
+    <div className="border border-stone-200 dark:border-stone-800 rounded-xl overflow-hidden shadow-sm">
       {/* Header */}
-      <div className="grid grid-cols-7 border-b border-border bg-muted">
+      <div className="grid grid-cols-7 border-b border-stone-200 dark:border-stone-800 bg-stone-50 dark:bg-stone-900">
         {WEEKDAYS.map((day) => (
           <div
             key={day}
-            className="p-2 text-center text-xs font-medium text-muted-foreground border-r border-border last:border-r-0"
+            className="p-2 text-center text-xs font-medium text-stone-500 dark:text-stone-500 border-r border-stone-200 dark:border-stone-800 last:border-r-0"
           >
             {day}
           </div>
@@ -273,12 +253,11 @@ export function CalendarGrid({
           const inCurrentMonth = isCurrentMonth(day, currentDate);
 
           return (
-            <DroppableDay
+            <DroppableDayMonth
               key={i}
               date={day}
               projects={dayProjects}
               inCurrentMonth={inCurrentMonth}
-              variant="month"
             />
           );
         })}

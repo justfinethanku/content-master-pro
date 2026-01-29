@@ -254,9 +254,12 @@ export default function ProjectDetailPage({ params }: ProjectDetailPageProps) {
                   {project.video_runtime}
                 </span>
               )}
-              <Badge variant="secondary" className={statusConfig.bgClass}>
-                {statusConfig.label}
-              </Badge>
+              <span className="flex items-center gap-1.5">
+                <span className={`w-2 h-2 rounded-full ${statusConfig.dotClass}`} />
+                <span className={`text-sm font-medium ${statusConfig.textClass}`}>
+                  {statusConfig.label}
+                </span>
+              </span>
             </div>
           </div>
         </div>

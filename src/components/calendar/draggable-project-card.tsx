@@ -40,24 +40,29 @@ export function DraggableProjectCard({
         isDragging && "opacity-50 z-50"
       )}
     >
-      {/* Drag handle overlay */}
+      {/* Drag handle - subtle, only visible on hover */}
       <div
         {...listeners}
         {...attributes}
         className={cn(
-          "absolute left-0 top-0 bottom-0 w-6 flex items-center justify-center",
+          "absolute left-0 top-0 bottom-0 flex items-center justify-center",
           "cursor-grab active:cursor-grabbing",
-          "opacity-0 group-hover:opacity-100 transition-opacity",
-          "z-10 rounded-l-md",
-          variant === "compact" ? "bg-accent/80" : "bg-accent/80"
+          "opacity-0 group-hover:opacity-100 transition-opacity duration-150",
+          "z-10",
+          variant === "compact" ? "w-4 -ml-1" : "w-5 -ml-1"
         )}
         onClick={(e) => e.preventDefault()}
       >
-        <GripVertical className="h-3 w-3 text-muted-foreground" />
+        <GripVertical
+          className={cn(
+            "text-stone-400 dark:text-stone-600",
+            variant === "compact" ? "h-3 w-3" : "h-4 w-4"
+          )}
+        />
       </div>
 
-      {/* The actual card - wrapped to prevent link navigation during drag */}
-      <div className={cn(isDragging && "pointer-events-none")}>
+      {/* The actual card */}
+      <div className={cn(isDragging && "pointer-events-none", "w-full overflow-hidden")}>
         <ProjectCard project={project} variant={variant} />
       </div>
     </div>

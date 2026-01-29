@@ -1,36 +1,43 @@
 "use client";
 
 import Link from "next/link";
-import { Badge } from "@/components/ui/badge";
 import type { ContentProject, ProjectStatus } from "@/lib/types";
-import { Youtube, FileText, Video } from "lucide-react";
+import { cn } from "@/lib/utils";
 
-// Status color configuration
-const STATUS_CONFIG: Record<ProjectStatus, { label: string; bgClass: string }> = {
+// Status configuration with summer yellow accents
+const STATUS_CONFIG: Record<
+  ProjectStatus,
+  { label: string; dotClass: string; textClass: string }
+> = {
   draft: {
     label: "Draft",
-    bgClass: "bg-gray-100 text-gray-800 dark:bg-gray-800 dark:text-gray-200",
+    dotClass: "bg-stone-400",
+    textClass: "text-stone-600 dark:text-stone-400",
   },
   review: {
     label: "Review",
-    bgClass: "bg-amber-100 text-amber-800 dark:bg-amber-900 dark:text-amber-200",
+    dotClass: "bg-amber-400",
+    textClass: "text-amber-700 dark:text-amber-400",
   },
   scheduled: {
     label: "Scheduled",
-    bgClass: "bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200",
+    dotClass: "bg-yellow-400",
+    textClass: "text-yellow-700 dark:text-yellow-400",
   },
   published: {
     label: "Published",
-    bgClass: "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200",
+    dotClass: "bg-emerald-400",
+    textClass: "text-emerald-700 dark:text-emerald-400",
   },
 };
 
-// Platform icons
-const PLATFORM_ICONS: Record<string, React.ComponentType<{ className?: string }>> = {
-  youtube: Youtube,
-  tiktok: Video,
-  substack: FileText,
-};
+// Extract first N words from text
+function truncateWords(text: string | null | undefined, wordCount: number): string {
+  if (!text) return "";
+  const words = text.trim().split(/\s+/);
+  if (words.length <= wordCount) return text;
+  return words.slice(0, wordCount).join(" ") + "...";
+}
 
 interface ProjectCardProps {
   project: ContentProject;
@@ -39,82 +46,69 @@ interface ProjectCardProps {
 
 export function ProjectCard({ project, variant = "compact" }: ProjectCardProps) {
   const statusConfig = STATUS_CONFIG[project.status];
-  const platforms = project.target_platforms || [];
+  const summary = truncateWords(project.notes, 50);
 
   if (variant === "compact") {
+    // Compact card for month view - just title and status dot
     return (
       <Link
         href={`/projects/${project.id}`}
-        className="block p-2 rounded-md hover:bg-accent transition-colors border border-border bg-card"
+        className={cn(
+          "block rounded-lg transition-all duration-200",
+          "bg-amber-50/80 dark:bg-amber-950/30",
+          "border-l-3 border-l-yellow-400",
+          "hover:bg-amber-100/80 dark:hover:bg-amber-900/40",
+          "hover:shadow-sm",
+          "px-2.5 py-1.5"
+        )}
       >
-        <div className="flex items-start justify-between gap-1">
-          <p className="text-xs font-medium truncate flex-1 text-foreground">
+        <div className="flex items-center gap-2 min-w-0">
+          <span
+            className={cn("w-1.5 h-1.5 rounded-full shrink-0", statusConfig.dotClass)}
+            aria-label={statusConfig.label}
+          />
+          <p className="text-xs font-medium text-stone-800 dark:text-stone-200 truncate">
             {project.title}
           </p>
-          <Badge
-            variant="secondary"
-            className={`text-[10px] px-1 py-0 ${statusConfig.bgClass}`}
-          >
-            {statusConfig.label}
-          </Badge>
         </div>
-        {platforms.length > 0 && (
-          <div className="flex gap-1 mt-1">
-            {platforms.slice(0, 3).map((platform) => {
-              const Icon = PLATFORM_ICONS[platform.toLowerCase()];
-              return Icon ? (
-                <Icon
-                  key={platform}
-                  className="h-3 w-3 text-muted-foreground"
-                />
-              ) : null;
-            })}
-          </div>
-        )}
       </Link>
     );
   }
 
-  // Full variant for week view
+  // Full card for week view - magazine editorial style
   return (
     <Link
       href={`/projects/${project.id}`}
-      className="block p-3 rounded-lg hover:bg-accent transition-colors border border-border bg-card"
-    >
-      <div className="flex items-start justify-between gap-2">
-        <div className="flex-1 min-w-0">
-          <p className="text-sm font-medium truncate text-foreground">
-            {project.title}
-          </p>
-          {project.video_runtime && (
-            <p className="text-xs text-muted-foreground mt-1">
-              {project.video_runtime}
-            </p>
-          )}
-        </div>
-        <Badge variant="secondary" className={statusConfig.bgClass}>
-          {statusConfig.label}
-        </Badge>
-      </div>
-      {platforms.length > 0 && (
-        <div className="flex gap-2 mt-2">
-          {platforms.map((platform) => {
-            const Icon = PLATFORM_ICONS[platform.toLowerCase()];
-            return (
-              <div
-                key={platform}
-                className="flex items-center gap-1 text-xs text-muted-foreground"
-              >
-                {Icon && <Icon className="h-3 w-3" />}
-                <span className="capitalize">{platform}</span>
-              </div>
-            );
-          })}
-        </div>
+      className={cn(
+        "block rounded-xl transition-all duration-200",
+        "bg-linear-to-br from-amber-50 to-yellow-50/50",
+        "dark:from-amber-950/40 dark:to-yellow-950/20",
+        "border border-amber-200/60 dark:border-amber-800/40",
+        "hover:shadow-md hover:shadow-amber-200/40 dark:hover:shadow-amber-900/30",
+        "hover:border-yellow-300 dark:hover:border-yellow-700",
+        "p-4 overflow-hidden"
       )}
-      {project.notes && (
-        <p className="text-xs text-muted-foreground mt-2 line-clamp-2">
-          {project.notes}
+    >
+      {/* Status indicator - subtle top accent */}
+      <div className="flex items-center gap-1.5 mb-2">
+        <span
+          className={cn("w-2 h-2 rounded-full", statusConfig.dotClass)}
+          aria-label={statusConfig.label}
+        />
+        <span className={cn("text-[11px] font-medium uppercase tracking-wide", statusConfig.textClass)}>
+          {statusConfig.label}
+        </span>
+      </div>
+
+      {/* Title - editorial headline style */}
+      <h3 className="font-semibold text-stone-900 dark:text-stone-100 leading-snug mb-2 line-clamp-2">
+        {project.title}
+      </h3>
+
+      {/* Summary - magazine body text */}
+      {summary && (
+        <p className="text-sm text-stone-600 dark:text-stone-400 leading-relaxed line-clamp-3">
+          {summary}
         </p>
       )}
     </Link>

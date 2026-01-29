@@ -53,7 +53,7 @@ function formatWeekRange(date: Date): string {
 }
 
 export function CalendarView() {
-  const [viewMode, setViewMode] = useState<ViewMode>("month");
+  const [viewMode, setViewMode] = useState<ViewMode>("week");
   const [currentDate, setCurrentDate] = useState(new Date());
   const [statusFilter, setStatusFilter] = useState<ProjectStatus | "all">("all");
   const [platformFilter, setPlatformFilter] = useState<string>("all");
@@ -293,11 +293,13 @@ export function CalendarView() {
             const count = projects.filter((p) => p.status === status).length;
             if (count === 0) return null;
             return (
-              <span key={status} className="flex items-center gap-1">
+              <span key={status} className="flex items-center gap-1.5">
                 <span
-                  className={`w-2 h-2 rounded-full ${config.bgClass.split(" ")[0]}`}
+                  className={`w-2 h-2 rounded-full ${config.dotClass}`}
                 />
-                {count} {config.label.toLowerCase()}
+                <span className="text-stone-600 dark:text-stone-400">
+                  {count} {config.label.toLowerCase()}
+                </span>
               </span>
             );
           })}
