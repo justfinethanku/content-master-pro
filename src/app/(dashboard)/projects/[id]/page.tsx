@@ -7,6 +7,12 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Textarea } from "@/components/ui/textarea";
+import { Calendar as CalendarPicker } from "@/components/ui/calendar";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
 import { AssetCard } from "@/components/projects/asset-card";
 import { PublicationModal } from "@/components/projects/publication-modal";
 import { STATUS_CONFIG } from "@/components/calendar/project-card";
@@ -20,7 +26,7 @@ import { usePublications } from "@/hooks/use-publications";
 import type { ProjectStatus, AssetType } from "@/lib/types";
 import {
   ArrowLeft,
-  Calendar,
+  CalendarIcon,
   Clock,
   Plus,
   Trash2,
@@ -30,6 +36,8 @@ import {
   Video,
   FileText,
 } from "lucide-react";
+import { toast } from "sonner";
+import { cn } from "@/lib/utils";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -90,6 +98,7 @@ export default function ProjectDetailPage({ params }: ProjectDetailPageProps) {
 
   const [notes, setNotes] = useState<string | null>(null);
   const [newAssetType, setNewAssetType] = useState<AssetType | "">("");
+  const [datePickerOpen, setDatePickerOpen] = useState(false);
 
   // Initialize notes from project when loaded
   if (project && notes === null) {
@@ -110,6 +119,36 @@ export default function ProjectDetailPage({ params }: ProjectDetailPageProps) {
       id: project.id,
       updates: { notes: notes || null },
     });
+  };
+
+  const handleDateChange = async (date: Date | undefined) => {
+    if (!project) return;
+
+    const newScheduledDate = date
+      ? date.toISOString().split("T")[0]
+      : null;
+
+    // Don't update if same date
+    const currentDate = project.scheduled_date?.split("T")[0];
+    if (currentDate === newScheduledDate) {
+      setDatePickerOpen(false);
+      return;
+    }
+
+    try {
+      await updateProject.mutateAsync({
+        id: project.id,
+        updates: { scheduled_date: newScheduledDate },
+      });
+      setDatePickerOpen(false);
+      toast.success(
+        newScheduledDate
+          ? `Scheduled for ${new Date(newScheduledDate).toLocaleDateString()}`
+          : "Removed scheduled date"
+      );
+    } catch {
+      toast.error("Failed to update scheduled date");
+    }
   };
 
   const handleDelete = async () => {
@@ -169,12 +208,46 @@ export default function ProjectDetailPage({ params }: ProjectDetailPageProps) {
               {project.title}
             </h1>
             <div className="flex items-center gap-3 mt-1 text-sm text-muted-foreground">
-              <span className="flex items-center gap-1">
-                <Calendar className="h-4 w-4" />
-                {project.scheduled_date
-                  ? new Date(project.scheduled_date).toLocaleDateString()
-                  : "Not scheduled"}
-              </span>
+              <Popover open={datePickerOpen} onOpenChange={setDatePickerOpen}>
+                <PopoverTrigger asChild>
+                  <button
+                    className={cn(
+                      "flex items-center gap-1 hover:text-foreground transition-colors rounded-md px-2 py-1 -mx-2 -my-1",
+                      "hover:bg-accent focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2",
+                      !project.scheduled_date && "text-muted-foreground/70"
+                    )}
+                  >
+                    <CalendarIcon className="h-4 w-4" />
+                    {project.scheduled_date
+                      ? new Date(project.scheduled_date).toLocaleDateString()
+                      : "Set date..."}
+                  </button>
+                </PopoverTrigger>
+                <PopoverContent className="w-auto p-0" align="start">
+                  <CalendarPicker
+                    mode="single"
+                    selected={
+                      project.scheduled_date
+                        ? new Date(project.scheduled_date)
+                        : undefined
+                    }
+                    onSelect={handleDateChange}
+                    initialFocus
+                  />
+                  {project.scheduled_date && (
+                    <div className="border-t p-2">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="w-full text-muted-foreground"
+                        onClick={() => handleDateChange(undefined)}
+                      >
+                        Clear date
+                      </Button>
+                    </div>
+                  )}
+                </PopoverContent>
+              </Popover>
               {project.video_runtime && (
                 <span className="flex items-center gap-1">
                   <Clock className="h-4 w-4" />

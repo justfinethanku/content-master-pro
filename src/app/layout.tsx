@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
+import { Toaster } from "sonner";
 import { Providers } from "@/components/providers";
 import "./globals.css";
 
@@ -52,6 +53,7 @@ export default function RootLayout({
         className={`${geistSans.variable} ${geistMono.variable} min-h-screen bg-background font-sans antialiased`}
       >
         <Providers>{children}</Providers>
+        <Toaster richColors position="bottom-right" />
       </body>
     </html>
   );

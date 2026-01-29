@@ -1,7 +1,8 @@
 "use client";
 
 import { useMemo } from "react";
-import { ProjectCard } from "./project-card";
+import { useDroppable } from "@dnd-kit/core";
+import { DraggableProjectCard } from "./draggable-project-card";
 import type { ContentProject } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
@@ -77,6 +78,98 @@ function isCurrentMonth(date: Date, currentDate: Date): boolean {
 
 const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
+// Droppable day cell component
+interface DroppableDayProps {
+  date: Date;
+  projects: ContentProject[];
+  inCurrentMonth: boolean;
+  variant: "month" | "week";
+}
+
+function DroppableDay({
+  date,
+  projects,
+  inCurrentMonth,
+  variant,
+}: DroppableDayProps) {
+  const dateKey = formatDateKey(date);
+  const { setNodeRef, isOver } = useDroppable({
+    id: dateKey,
+    data: {
+      date: dateKey,
+      type: "calendar-day",
+    },
+  });
+
+  const today = isToday(date);
+
+  if (variant === "week") {
+    return (
+      <div
+        ref={setNodeRef}
+        className={cn(
+          "p-2 border-r border-border last:border-r-0 bg-background min-h-[300px]",
+          today && "bg-primary/5",
+          isOver && "ring-2 ring-primary ring-inset bg-primary/10"
+        )}
+      >
+        <div className="space-y-2">
+          {projects.map((project) => (
+            <DraggableProjectCard
+              key={project.id}
+              project={project}
+              variant="full"
+            />
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  // Month view
+  return (
+    <div
+      ref={setNodeRef}
+      className={cn(
+        "min-h-[100px] p-1 border-r border-b border-border last:border-r-0",
+        !inCurrentMonth && "bg-muted/50",
+        today && "bg-primary/5",
+        isOver && "ring-2 ring-primary ring-inset bg-primary/10"
+      )}
+    >
+      {/* Day number */}
+      <div
+        className={cn(
+          "text-xs font-medium mb-1 p-1",
+          today
+            ? "text-primary font-bold"
+            : inCurrentMonth
+            ? "text-foreground"
+            : "text-muted-foreground"
+        )}
+      >
+        {date.getDate()}
+      </div>
+
+      {/* Projects */}
+      <div className="space-y-1">
+        {projects.slice(0, 3).map((project) => (
+          <DraggableProjectCard
+            key={project.id}
+            project={project}
+            variant="compact"
+          />
+        ))}
+        {projects.length > 3 && (
+          <p className="text-xs text-muted-foreground px-1">
+            +{projects.length - 3} more
+          </p>
+        )}
+      </div>
+    </div>
+  );
+}
+
 export function CalendarGrid({
   projects,
   viewMode,
@@ -137,29 +230,19 @@ export function CalendarGrid({
         </div>
 
         {/* Content */}
-        <div className="grid grid-cols-7 min-h-[300px]">
+        <div className="grid grid-cols-7">
           {days.map((day, i) => {
             const dateKey = formatDateKey(day);
             const dayProjects = projectsByDate[dateKey] || [];
 
             return (
-              <div
+              <DroppableDay
                 key={i}
-                className={cn(
-                  "p-2 border-r border-border last:border-r-0 bg-background",
-                  isToday(day) && "bg-primary/5"
-                )}
-              >
-                <div className="space-y-2">
-                  {dayProjects.map((project) => (
-                    <ProjectCard
-                      key={project.id}
-                      project={project}
-                      variant="full"
-                    />
-                  ))}
-                </div>
-              </div>
+                date={day}
+                projects={dayProjects}
+                inCurrentMonth={true}
+                variant="week"
+              />
             );
           })}
         </div>
@@ -190,44 +273,13 @@ export function CalendarGrid({
           const inCurrentMonth = isCurrentMonth(day, currentDate);
 
           return (
-            <div
+            <DroppableDay
               key={i}
-              className={cn(
-                "min-h-[100px] p-1 border-r border-b border-border last:border-r-0",
-                !inCurrentMonth && "bg-muted/50",
-                isToday(day) && "bg-primary/5"
-              )}
-            >
-              {/* Day number */}
-              <div
-                className={cn(
-                  "text-xs font-medium mb-1 p-1",
-                  isToday(day)
-                    ? "text-primary font-bold"
-                    : inCurrentMonth
-                    ? "text-foreground"
-                    : "text-muted-foreground"
-                )}
-              >
-                {day.getDate()}
-              </div>
-
-              {/* Projects */}
-              <div className="space-y-1">
-                {dayProjects.slice(0, 3).map((project) => (
-                  <ProjectCard
-                    key={project.id}
-                    project={project}
-                    variant="compact"
-                  />
-                ))}
-                {dayProjects.length > 3 && (
-                  <p className="text-xs text-muted-foreground px-1">
-                    +{dayProjects.length - 3} more
-                  </p>
-                )}
-              </div>
-            </div>
+              date={day}
+              projects={dayProjects}
+              inCurrentMonth={inCurrentMonth}
+              variant="month"
+            />
           );
         })}
       </div>

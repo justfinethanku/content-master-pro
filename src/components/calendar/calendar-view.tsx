@@ -1,7 +1,9 @@
 "use client";
 
 import { useState, useMemo } from "react";
+import { DndContext, DragEndEvent, DragOverlay } from "@dnd-kit/core";
 import { CalendarGrid } from "./calendar-grid";
+import { ProjectCard, STATUS_CONFIG } from "./project-card";
 import { Button } from "@/components/ui/button";
 import {
   Select,
@@ -10,8 +12,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { useProjects, type ProjectFilters } from "@/hooks/use-projects";
-import type { ProjectStatus } from "@/lib/types";
+import { useProjects, useUpdateProject, type ProjectFilters } from "@/hooks/use-projects";
+import type { ContentProject, ProjectStatus } from "@/lib/types";
 import {
   ChevronLeft,
   ChevronRight,
@@ -20,7 +22,7 @@ import {
   Loader2,
 } from "lucide-react";
 import Link from "next/link";
-import { STATUS_CONFIG } from "./project-card";
+import { toast } from "sonner";
 
 type ViewMode = "month" | "week";
 
@@ -55,6 +57,9 @@ export function CalendarView() {
   const [currentDate, setCurrentDate] = useState(new Date());
   const [statusFilter, setStatusFilter] = useState<ProjectStatus | "all">("all");
   const [platformFilter, setPlatformFilter] = useState<string>("all");
+  const [activeProject, setActiveProject] = useState<ContentProject | null>(null);
+
+  const updateProject = useUpdateProject();
 
   // Calculate date range for query
   const dateRange = useMemo(() => {
@@ -122,6 +127,40 @@ export function CalendarView() {
 
   const goToToday = () => {
     setCurrentDate(new Date());
+  };
+
+  // Drag and drop handlers
+  const handleDragStart = (event: { active: { data: { current?: { project?: ContentProject } } } }) => {
+    const project = event.active.data.current?.project;
+    if (project) {
+      setActiveProject(project);
+    }
+  };
+
+  const handleDragEnd = async (event: DragEndEvent) => {
+    const { active, over } = event;
+    setActiveProject(null);
+
+    if (!over) return;
+
+    const projectData = active.data.current?.project as ContentProject | undefined;
+    const targetDate = over.id as string;
+
+    if (!projectData) return;
+
+    // Don't update if dropped on the same date
+    const currentScheduledDate = projectData.scheduled_date?.split("T")[0];
+    if (currentScheduledDate === targetDate) return;
+
+    try {
+      await updateProject.mutateAsync({
+        id: projectData.id,
+        updates: { scheduled_date: targetDate },
+      });
+      toast.success(`Moved "${projectData.title}" to ${new Date(targetDate).toLocaleDateString()}`);
+    } catch {
+      toast.error("Failed to update project date");
+    }
   };
 
   return (
@@ -213,7 +252,7 @@ export function CalendarView() {
         </div>
       </div>
 
-      {/* Calendar Grid */}
+      {/* Calendar Grid with DnD */}
       {isLoading ? (
         <div className="flex items-center justify-center h-[400px] border border-border rounded-lg bg-card">
           <div className="flex items-center gap-2 text-muted-foreground">
@@ -222,11 +261,23 @@ export function CalendarView() {
           </div>
         </div>
       ) : (
-        <CalendarGrid
-          projects={projects}
-          viewMode={viewMode}
-          currentDate={currentDate}
-        />
+        <DndContext onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
+          <CalendarGrid
+            projects={projects}
+            viewMode={viewMode}
+            currentDate={currentDate}
+          />
+          <DragOverlay>
+            {activeProject ? (
+              <div className="opacity-90 shadow-lg">
+                <ProjectCard
+                  project={activeProject}
+                  variant={viewMode === "week" ? "full" : "compact"}
+                />
+              </div>
+            ) : null}
+          </DragOverlay>
+        </DndContext>
       )}
 
       {/* Summary */}
