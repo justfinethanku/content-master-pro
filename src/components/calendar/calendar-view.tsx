@@ -78,6 +78,7 @@ export function CalendarView() {
   const [currentDate, setCurrentDate] = useState(initialDate);
   const [statusFilter, setStatusFilter] = useState<ProjectStatus | "all">(initialStatus);
   const [activeProject, setActiveProject] = useState<ContentProjectWithSummary | null>(null);
+  const [scrollToTodayTrigger, setScrollToTodayTrigger] = useState(0);
 
   // Sync state to URL params (for back button support)
   const updateUrlParams = useCallback((date: Date, view: ViewMode, status: ProjectStatus | "all") => {
@@ -112,13 +113,14 @@ export function CalendarView() {
         endDate: end.toISOString().split("T")[0],
       };
     } else {
-      const startOfWeek = new Date(currentDate);
-      startOfWeek.setDate(currentDate.getDate() - currentDate.getDay());
-      const endOfWeek = new Date(startOfWeek);
-      endOfWeek.setDate(startOfWeek.getDate() + 6);
+      // Card view: load 90 days before and after current date for infinite scroll
+      const start = new Date(currentDate);
+      start.setDate(start.getDate() - 90);
+      const end = new Date(currentDate);
+      end.setDate(end.getDate() + 90);
       return {
-        startDate: startOfWeek.toISOString().split("T")[0],
-        endDate: endOfWeek.toISOString().split("T")[0],
+        startDate: start.toISOString().split("T")[0],
+        endDate: end.toISOString().split("T")[0],
       };
     }
   }, [viewMode, currentDate]);
@@ -165,6 +167,7 @@ export function CalendarView() {
 
   const goToToday = () => {
     setCurrentDate(new Date());
+    setScrollToTodayTrigger(prev => prev + 1);
   };
 
   // Drag and drop handlers
@@ -214,11 +217,14 @@ export function CalendarView() {
             <ChevronRight className="h-4 w-4" />
           </Button>
           <h2 className="text-xl font-semibold text-foreground min-w-[200px]">
-            {viewMode === "month"
-              ? formatMonthYear(currentDate)
-              : formatWeekRange(currentDate)}
+            {formatMonthYear(currentDate)}
           </h2>
-          <Button variant="ghost" size="sm" onClick={goToToday}>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={goToToday}
+            className="border-yellow-400 bg-yellow-50 text-yellow-700 hover:bg-yellow-100 hover:border-yellow-500 dark:bg-yellow-950/30 dark:text-yellow-400 dark:border-yellow-600 dark:hover:bg-yellow-950/50"
+          >
             Today
           </Button>
         </div>
@@ -287,6 +293,7 @@ export function CalendarView() {
             projects={projects}
             viewMode={viewMode}
             currentDate={currentDate}
+            scrollToToday={scrollToTodayTrigger}
           />
           <DragOverlay>
             {activeProject ? (

@@ -122,9 +122,9 @@ function AssetEditorInner({
       clearInterval(lockRefreshTimerRef.current);
     }
 
-    // Save if there are unsaved changes
+    // Save if there are unsaved changes (without exiting, since we're already handling that)
     if (hasUnsavedChanges) {
-      await handleSave();
+      await handleSave(false);
     }
 
     await releaseLock.mutateAsync(assetId);
@@ -132,7 +132,7 @@ function AssetEditorInner({
   };
 
   // Save content
-  const handleSave = async () => {
+  const handleSave = async (exitAfterSave: boolean = false) => {
     if (!currentLockStatus?.isLockedByCurrentUser) return;
 
     setSaveStatus("saving");
@@ -144,10 +144,23 @@ function AssetEditorInner({
       setHasUnsavedChanges(false);
       setSaveStatus("saved");
 
-      // Reset to idle after 2 seconds
-      setTimeout(() => {
-        setSaveStatus("idle");
-      }, 2000);
+      // If exitAfterSave, release lock and navigate away
+      if (exitAfterSave) {
+        // Clear timers
+        if (inactivityTimerRef.current) {
+          clearTimeout(inactivityTimerRef.current);
+        }
+        if (lockRefreshTimerRef.current) {
+          clearInterval(lockRefreshTimerRef.current);
+        }
+        await releaseLock.mutateAsync(assetId);
+        onNavigateAway?.();
+      } else {
+        // Reset to idle after 2 seconds
+        setTimeout(() => {
+          setSaveStatus("idle");
+        }, 2000);
+      }
     } catch (error) {
       console.error("Failed to save:", error);
       setSaveStatus("error");
@@ -339,7 +352,7 @@ function AssetEditorInner({
                   )}
                   <Button
                     size="sm"
-                    onClick={handleSave}
+                    onClick={() => handleSave(true)}
                     disabled={!canEdit || !hasUnsavedChanges || createVersion.isPending}
                   >
                     <Save className="h-4 w-4 mr-1" />

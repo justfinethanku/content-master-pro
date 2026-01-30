@@ -4,6 +4,19 @@ import Link from "next/link";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
+import { useDeleteAsset } from "@/hooks/use-assets";
+import { toast } from "sonner";
 import type { ProjectAsset, AssetStatus } from "@/lib/types";
 import {
   FileText,
@@ -13,6 +26,8 @@ import {
   Lock,
   Edit,
   ExternalLink,
+  Trash2,
+  Loader2,
 } from "lucide-react";
 
 // Asset type icons
@@ -66,6 +81,7 @@ interface AssetCardProps {
 }
 
 export function AssetCard({ asset, projectId, currentUserId }: AssetCardProps) {
+  const deleteAsset = useDeleteAsset();
   const Icon = ASSET_TYPE_ICONS[asset.asset_type] || FileText;
   const typeLabel = ASSET_TYPE_LABELS[asset.asset_type] || asset.asset_type;
   const statusConfig = STATUS_CONFIG[asset.status];
@@ -78,6 +94,15 @@ export function AssetCard({ asset, projectId, currentUserId }: AssetCardProps) {
   const isLockStale = asset.locked_at
     ? new Date().getTime() - new Date(asset.locked_at).getTime() > LOCK_TIMEOUT_MS
     : false;
+
+  const handleDelete = async () => {
+    try {
+      await deleteAsset.mutateAsync({ id: asset.id, projectId });
+      toast.success(`Deleted ${typeLabel}`);
+    } catch {
+      toast.error("Failed to delete asset");
+    }
+  };
 
   return (
     <Card className="border-border hover:border-primary/50 transition-colors">
@@ -152,6 +177,41 @@ export function AssetCard({ asset, projectId, currentUserId }: AssetCardProps) {
               </a>
             </Button>
           )}
+
+          <AlertDialog>
+            <AlertDialogTrigger asChild>
+              <Button
+                size="sm"
+                variant="ghost"
+                className="text-muted-foreground hover:text-destructive"
+                disabled={isLocked && !isLockStale}
+              >
+                {deleteAsset.isPending ? (
+                  <Loader2 className="h-3 w-3 animate-spin" />
+                ) : (
+                  <Trash2 className="h-3 w-3" />
+                )}
+              </Button>
+            </AlertDialogTrigger>
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle>Delete {typeLabel}?</AlertDialogTitle>
+                <AlertDialogDescription>
+                  This will permanently delete this asset and all its versions.
+                  This action cannot be undone.
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel>Cancel</AlertDialogCancel>
+                <AlertDialogAction
+                  onClick={handleDelete}
+                  className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                >
+                  Delete
+                </AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
         </div>
       </CardContent>
     </Card>

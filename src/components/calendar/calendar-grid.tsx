@@ -13,6 +13,7 @@ interface CalendarGridProps {
   projects: ContentProjectWithSummary[];
   viewMode: "month" | "week";
   currentDate: Date;
+  scrollToToday?: number; // Increment this to trigger scroll to today
 }
 
 // Get days in month grid (includes prev/next month padding)
@@ -40,15 +41,15 @@ function getMonthDays(date: Date): Date[] {
   return days;
 }
 
-// Get days in current week
-function getWeekDays(date: Date): Date[] {
-  const startOfWeek = new Date(date);
-  startOfWeek.setDate(date.getDate() - date.getDay());
+// Get extended range of days for infinite scroll (90 days before and after)
+function getExtendedDays(date: Date): Date[] {
+  const start = new Date(date);
+  start.setDate(date.getDate() - 90);
 
   const days: Date[] = [];
-  for (let i = 0; i < 7; i++) {
-    const day = new Date(startOfWeek);
-    day.setDate(startOfWeek.getDate() + i);
+  for (let i = 0; i < 181; i++) { // 90 + 1 + 90 = 181 days
+    const day = new Date(start);
+    day.setDate(start.getDate() + i);
     days.push(day);
   }
 
@@ -130,16 +131,17 @@ function DroppableDayMonth({ date, projects, inCurrentMonth }: DroppableDayMonth
 
 // Card item type for gallery - either a project or an empty day placeholder
 type GalleryItem =
-  | { type: "project"; project: ContentProjectWithSummary }
-  | { type: "empty"; date: string };
+  | { type: "project"; project: ContentProjectWithSummary; isToday: boolean }
+  | { type: "empty"; date: string; isToday: boolean };
 
 // Gallery carousel for week view
 interface GalleryCarouselProps {
   projects: ContentProjectWithSummary[];
-  weekDays: Date[];
+  days: Date[];
+  scrollToToday?: number;
 }
 
-function GalleryCarousel({ projects, weekDays }: GalleryCarouselProps) {
+function GalleryCarousel({ projects, days, scrollToToday }: GalleryCarouselProps) {
   const [currentIndex, setCurrentIndex] = useState(0);
   const cardsPerPage = 3;
 
@@ -162,7 +164,7 @@ function GalleryCarousel({ projects, weekDays }: GalleryCarouselProps) {
     });
 
     // Build items array in chronological order
-    for (const day of weekDays) {
+    for (const day of days) {
       const dateKey = formatDateKey(day);
       const dayProjects = projectsByDate.get(dateKey) || [];
       const dayIsToday = isToday(day);
@@ -172,38 +174,29 @@ function GalleryCarousel({ projects, weekDays }: GalleryCarouselProps) {
         if (dayIsToday && foundTodayIndex === -1) {
           foundTodayIndex = items.length;
         }
-        items.push({ type: "empty", date: dateKey });
+        items.push({ type: "empty", date: dateKey, isToday: dayIsToday });
       } else {
         // Add all projects for this day
         if (dayIsToday && foundTodayIndex === -1) {
           foundTodayIndex = items.length;
         }
         for (const project of dayProjects) {
-          items.push({ type: "project", project });
+          items.push({ type: "project", project, isToday: dayIsToday });
         }
       }
     }
 
     return { galleryItems: items, todayIndex: foundTodayIndex };
-  }, [projects, weekDays]);
+  }, [projects, days]);
 
-  // Center on today when the week changes and today is in this week
+  // Scroll to today when scrollToToday changes or on initial mount
   useEffect(() => {
     if (todayIndex >= 0) {
       // Center today's card (put it in the middle of 3 cards)
       const centeredIndex = Math.max(0, Math.min(todayIndex - 1, galleryItems.length - cardsPerPage));
       setCurrentIndex(centeredIndex);
-    } else {
-      // Today is not in this week, reset to start
-      setCurrentIndex(0);
     }
-  }, [weekDays]); // Reset when week changes
-
-  const totalPages = Math.ceil(galleryItems.length / cardsPerPage);
-  const currentPage = Math.floor(currentIndex / cardsPerPage);
-
-  const canGoBack = currentIndex > 0;
-  const canGoForward = currentIndex + cardsPerPage < galleryItems.length;
+  }, [scrollToToday, todayIndex, galleryItems.length]);
 
   const goBack = () => {
     setCurrentIndex(Math.max(0, currentIndex - cardsPerPage));
@@ -212,6 +205,10 @@ function GalleryCarousel({ projects, weekDays }: GalleryCarouselProps) {
   const goForward = () => {
     setCurrentIndex(Math.min(galleryItems.length - cardsPerPage, currentIndex + cardsPerPage));
   };
+
+  // Allow scrolling but show visual indication when near edges
+  const canGoBack = currentIndex > 0;
+  const canGoForward = currentIndex + cardsPerPage < galleryItems.length;
 
   const visibleItems = galleryItems.slice(currentIndex, currentIndex + cardsPerPage);
 
@@ -253,12 +250,12 @@ function GalleryCarousel({ projects, weekDays }: GalleryCarouselProps) {
       {/* Cards grid - portrait aspect ratio (2:3, like paper) */}
       <div className="px-8">
         <div className="grid grid-cols-3 gap-5">
-          {visibleItems.map((item, index) => (
+          {visibleItems.map((item) => (
             <div key={item.type === "project" ? item.project.id : `empty-${item.date}`} className="aspect-2/3">
               {item.type === "project" ? (
-                <ProjectCard project={item.project} variant="full" />
+                <ProjectCard project={item.project} variant="full" isToday={item.isToday} />
               ) : (
-                <EmptyDayCard date={item.date} />
+                <EmptyDayCard date={item.date} isToday={item.isToday} />
               )}
             </div>
           ))}
@@ -270,31 +267,13 @@ function GalleryCarousel({ projects, weekDays }: GalleryCarouselProps) {
         </div>
       </div>
 
-      {/* Page indicators */}
-      {totalPages > 1 && (
-        <div className="flex justify-center gap-2 mt-6">
-          {Array.from({ length: totalPages }).map((_, i) => (
-            <button
-              key={i}
-              onClick={() => setCurrentIndex(i * cardsPerPage)}
-              className={cn(
-                "w-2 h-2 rounded-full transition-all duration-200",
-                i === currentPage
-                  ? "bg-yellow-400 w-6"
-                  : "bg-stone-300 dark:bg-stone-700 hover:bg-yellow-300"
-              )}
-              aria-label={`Go to page ${i + 1}`}
-            />
-          ))}
-        </div>
-      )}
     </div>
   );
 }
 
-export function CalendarGrid({ projects, viewMode, currentDate }: CalendarGridProps) {
+export function CalendarGrid({ projects, viewMode, currentDate, scrollToToday }: CalendarGridProps) {
   const monthDays = useMemo(() => getMonthDays(currentDate), [currentDate]);
-  const weekDays = useMemo(() => getWeekDays(currentDate), [currentDate]);
+  const extendedDays = useMemo(() => getExtendedDays(currentDate), [currentDate]);
 
   const projectsByDate = useMemo(() => {
     const grouped: Record<string, ContentProjectWithSummary[]> = {};
@@ -316,7 +295,7 @@ export function CalendarGrid({ projects, viewMode, currentDate }: CalendarGridPr
   if (viewMode === "week") {
     return (
       <div className="py-4">
-        <GalleryCarousel projects={projects} weekDays={weekDays} />
+        <GalleryCarousel projects={projects} days={extendedDays} scrollToToday={scrollToToday} />
       </div>
     );
   }

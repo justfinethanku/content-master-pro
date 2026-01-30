@@ -67,9 +67,10 @@ function truncateWords(text: string | null | undefined, wordCount: number): stri
 interface ProjectCardProps {
   project: ContentProjectWithSummary;
   variant?: "compact" | "full";
+  isToday?: boolean;
 }
 
-export function ProjectCard({ project, variant = "compact" }: ProjectCardProps) {
+export function ProjectCard({ project, variant = "compact", isToday = false }: ProjectCardProps) {
   const statusConfig = STATUS_CONFIG[project.status];
   // Use content_summary from main post draft or outline (not notes)
   const summary = truncateWords(project.content_summary, 75);
@@ -107,17 +108,21 @@ export function ProjectCard({ project, variant = "compact" }: ProjectCardProps) 
       href={`/projects/${project.id}`}
       className={cn(
         "flex flex-col h-full rounded-xl transition-all duration-200",
-        "bg-linear-to-br from-amber-50 to-yellow-50/50",
-        "dark:from-amber-950/40 dark:to-yellow-950/20",
-        "border border-amber-200/60 dark:border-amber-800/40",
-        "hover:shadow-lg hover:shadow-amber-200/50 dark:hover:shadow-amber-900/40",
-        "hover:border-yellow-300 dark:hover:border-yellow-700",
+        "bg-amber-50/80 dark:bg-amber-950/30",
+        "border-2",
+        isToday
+          ? "border-emerald-400 dark:border-emerald-500 hover:border-emerald-500 dark:hover:border-emerald-400"
+          : "border-yellow-400 dark:border-yellow-600 hover:border-yellow-500 dark:hover:border-yellow-500",
+        "hover:shadow-lg",
+        isToday
+          ? "hover:shadow-emerald-200/50 dark:hover:shadow-emerald-900/40"
+          : "hover:shadow-amber-200/50 dark:hover:shadow-amber-900/40",
         "hover:-translate-y-0.5",
-        "p-5 overflow-hidden"
+        "p-4 overflow-hidden"
       )}
     >
       {/* Date at top */}
-      <p className="text-xs font-medium text-yellow-700 dark:text-yellow-500 uppercase tracking-wide mb-3">
+      <p className="text-xs font-medium text-yellow-700 dark:text-yellow-500 uppercase tracking-wide mb-2">
         {formatDate(project.scheduled_date)}
       </p>
 
@@ -126,10 +131,10 @@ export function ProjectCard({ project, variant = "compact" }: ProjectCardProps) 
         {project.title}
       </h3>
 
-      {/* Summary - main content area */}
-      <div className="flex-1 min-h-0">
+      {/* Summary - white content box */}
+      <div className="flex-1 min-h-0 bg-white dark:bg-stone-900 rounded-lg p-3 border border-stone-200 dark:border-stone-700">
         {summary ? (
-          <p className="text-sm text-stone-600 dark:text-stone-400 leading-relaxed line-clamp-6">
+          <p className="text-sm text-stone-700 dark:text-stone-300 leading-relaxed line-clamp-12">
             {summary}
           </p>
         ) : (
@@ -140,7 +145,7 @@ export function ProjectCard({ project, variant = "compact" }: ProjectCardProps) 
       </div>
 
       {/* Status at bottom - very small */}
-      <div className="mt-4 pt-3 border-t border-amber-200/40 dark:border-amber-800/30">
+      <div className="mt-3 pt-2">
         <span className={cn("text-[10px] font-medium uppercase tracking-wider", statusConfig.textClass)}>
           {statusConfig.label}
         </span>
@@ -152,20 +157,29 @@ export function ProjectCard({ project, variant = "compact" }: ProjectCardProps) 
 // Empty card for days with no content scheduled
 interface EmptyDayCardProps {
   date: string;
+  isToday?: boolean;
 }
 
-export function EmptyDayCard({ date }: EmptyDayCardProps) {
+export function EmptyDayCard({ date, isToday = false }: EmptyDayCardProps) {
   return (
     <div
       className={cn(
         "flex flex-col h-full rounded-xl",
         "bg-stone-50/50 dark:bg-stone-900/30",
-        "border border-dashed border-stone-300 dark:border-stone-700",
+        "border-2 border-dashed",
+        isToday
+          ? "border-emerald-400 dark:border-emerald-500"
+          : "border-stone-300 dark:border-stone-700",
         "p-5"
       )}
     >
       {/* Date at top */}
-      <p className="text-xs font-medium text-stone-500 dark:text-stone-500 uppercase tracking-wide mb-3">
+      <p className={cn(
+        "text-xs font-medium uppercase tracking-wide mb-3",
+        isToday
+          ? "text-emerald-600 dark:text-emerald-400"
+          : "text-stone-500 dark:text-stone-500"
+      )}>
         {formatDateFull(date)}
       </p>
 
@@ -178,7 +192,11 @@ export function EmptyDayCard({ date }: EmptyDayCardProps) {
           variant="outline"
           size="sm"
           asChild
-          className="border-yellow-400 text-yellow-700 hover:bg-yellow-50 dark:border-yellow-600 dark:text-yellow-500 dark:hover:bg-yellow-950/30"
+          className={cn(
+            isToday
+              ? "border-emerald-400 text-emerald-700 hover:bg-emerald-50 dark:border-emerald-600 dark:text-emerald-500 dark:hover:bg-emerald-950/30"
+              : "border-yellow-400 text-yellow-700 hover:bg-yellow-50 dark:border-yellow-600 dark:text-yellow-500 dark:hover:bg-yellow-950/30"
+          )}
         >
           <Link href={`/projects/new?date=${date}`}>
             <Plus className="h-4 w-4 mr-1" />
