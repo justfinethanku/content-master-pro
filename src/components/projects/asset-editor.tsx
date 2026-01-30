@@ -81,6 +81,15 @@ function AssetEditorInner({
     lastActivityRef.current = Date.now();
   }, []);
 
+  // Auto-acquire lock on mount if not already locked
+  useEffect(() => {
+    if (!lockStatus.isLocked && !acquireLock.isPending) {
+      handleAcquireLock();
+    }
+    // Only run on initial mount
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   // Handle content changes
   const handleContentChange = useCallback((newContent: string) => {
     setContent(newContent);

@@ -210,20 +210,24 @@ export function CalendarView() {
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         {/* Title and Navigation */}
         <div className="flex items-center gap-2">
-          <Button variant="outline" size="icon" onClick={goToPrevious}>
-            <ChevronLeft className="h-4 w-4" />
-          </Button>
-          <Button variant="outline" size="icon" onClick={goToNext}>
-            <ChevronRight className="h-4 w-4" />
-          </Button>
-          <h2 className="text-xl font-semibold text-foreground min-w-[200px]">
-            {formatMonthYear(currentDate)}
-          </h2>
+          {viewMode === "month" && (
+            <>
+              <Button variant="outline" size="icon" onClick={goToPrevious}>
+                <ChevronLeft className="h-4 w-4" />
+              </Button>
+              <Button variant="outline" size="icon" onClick={goToNext}>
+                <ChevronRight className="h-4 w-4" />
+              </Button>
+              <h2 className="text-xl font-semibold text-foreground min-w-[200px]">
+                {formatMonthYear(currentDate)}
+              </h2>
+            </>
+          )}
           <Button
             variant="outline"
             size="sm"
             onClick={goToToday}
-            className="border-yellow-400 bg-yellow-50 text-yellow-700 hover:bg-yellow-100 hover:border-yellow-500 dark:bg-yellow-950/30 dark:text-yellow-400 dark:border-yellow-600 dark:hover:bg-yellow-950/50"
+            className="border-green-500 bg-green-50 text-green-700 hover:bg-green-100 hover:border-green-600 dark:bg-green-950/30 dark:text-green-400 dark:border-green-600 dark:hover:bg-green-950/50"
           >
             Today
           </Button>

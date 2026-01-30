@@ -309,7 +309,7 @@ export default function ProjectDetailPage({ params }: ProjectDetailPageProps) {
                         : undefined
                     }
                     onSelect={handleDateChange}
-                    initialFocus
+                    autoFocus
                   />
                   {project.scheduled_date && (
                     <div className="border-t p-2">
@@ -374,10 +374,10 @@ export default function ProjectDetailPage({ params }: ProjectDetailPageProps) {
       {/* Status Workflow */}
       <Card>
         <CardHeader className="pb-3">
-          <CardTitle className="text-sm font-medium">Status Workflow</CardTitle>
+          <CardTitle className="text-sm font-medium">Please select status</CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center justify-center gap-2">
             {STATUS_ORDER.map((status, index) => {
               const config = STATUS_CONFIG[status];
               const isCurrentOrPast = index <= currentStatusIndex;
