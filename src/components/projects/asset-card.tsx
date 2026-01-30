@@ -29,6 +29,8 @@ import {
   Trash2,
   Loader2,
 } from "lucide-react";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 
 // Asset type icons
 const ASSET_TYPE_ICONS: Record<string, React.ComponentType<{ className?: string }>> = {
@@ -146,10 +148,13 @@ export function AssetCard({ asset, projectId, currentUserId }: AssetCardProps) {
 
         {/* Content preview */}
         {asset.content && (
-          <p className="text-xs text-muted-foreground line-clamp-2 mb-3">
-            {asset.content.slice(0, 150)}
-            {asset.content.length > 150 ? "..." : ""}
-          </p>
+          <div className="max-h-48 overflow-y-auto mb-3 pr-1 border border-border rounded-md p-2 bg-muted/30">
+            <div className="prose prose-sm dark:prose-invert max-w-none text-xs *:text-muted-foreground [&_h1]:text-sm [&_h2]:text-sm [&_h3]:text-xs [&_p]:text-xs [&_li]:text-xs [&_code]:text-xs">
+              <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                {asset.content}
+              </ReactMarkdown>
+            </div>
+          </div>
         )}
 
         {/* Version info */}
