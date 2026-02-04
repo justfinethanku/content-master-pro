@@ -7,47 +7,14 @@
 -- =============================================================================
 -- TEST ADMIN USER
 -- =============================================================================
--- Creates a test admin user for local development.
+-- Test user is created via Auth API (see scripts/seed-test-user.sh)
+-- Run after supabase start: npm run supabase:seed-user
+--
 -- Email: test@example.com
 -- Password: password123
 --
--- Note: In production, users are created through the normal auth flow.
-
--- Insert test user into auth.users
-INSERT INTO auth.users (
-  id,
-  instance_id,
-  email,
-  encrypted_password,
-  email_confirmed_at,
-  created_at,
-  updated_at,
-  raw_app_meta_data,
-  raw_user_meta_data,
-  is_super_admin,
-  role,
-  aud,
-  confirmation_token
-) VALUES (
-  '00000000-0000-0000-0000-000000000001',
-  '00000000-0000-0000-0000-000000000000',
-  'test@example.com',
-  crypt('password123', gen_salt('bf')),
-  NOW(),
-  NOW(),
-  NOW(),
-  '{"provider": "email", "providers": ["email"]}',
-  '{}',
-  FALSE,
-  'authenticated',
-  'authenticated',
-  ''
-) ON CONFLICT (id) DO NOTHING;
-
--- The profiles trigger auto-creates the profile, but we need to make them admin
-UPDATE profiles 
-SET role = 'admin', display_name = 'Test Admin'
-WHERE id = '00000000-0000-0000-0000-000000000001';
+-- This approach uses the official Supabase Auth API, making it resilient
+-- to auth schema changes across Supabase versions.
 
 -- =============================================================================
 -- LOCAL DEV NOTES

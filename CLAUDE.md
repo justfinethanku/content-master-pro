@@ -55,20 +55,26 @@ To switch back to production: delete `.env.local`.
 
 ### Test Credentials (Local Only)
 
-The seed creates a test admin user:
+Create a test admin user via the Auth API (resilient to Supabase version changes):
+
+```bash
+npm run supabase:seed-user
+```
+
 - Email: `test@example.com`
 - Password: `password123`
 
 ### Common Commands
 
 ```bash
-npm run supabase:start   # Start local containers
-npm run supabase:stop    # Stop local containers
-npm run supabase:status  # Show status and keys
-npm run supabase:env     # Generate .env.local from local Supabase
-npm run supabase:reset   # Reset DB (runs migrations + seed)
-npm run supabase:diff    # Generate migration from schema changes
-npm run supabase:push    # Push migrations to remote
+npm run supabase:start      # Start local containers
+npm run supabase:stop       # Stop local containers
+npm run supabase:status     # Show status and keys
+npm run supabase:env        # Generate .env.local from local Supabase
+npm run supabase:seed-user  # Create test admin user via Auth API
+npm run supabase:reset      # Reset DB (runs migrations only)
+npm run supabase:diff       # Generate migration from schema changes
+npm run supabase:push       # Push migrations to remote
 ```
 
 ## Tech Stack
