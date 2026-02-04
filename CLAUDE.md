@@ -11,6 +11,66 @@ npm run test     # Run Vitest tests
 npm run format   # Run Prettier
 ```
 
+## Local Development (Supabase)
+
+Run a local Supabase instance via Docker for development. This keeps your production database safe.
+
+### Prerequisites
+
+- Docker Desktop running
+- Supabase CLI: `brew install supabase/tap/supabase`
+
+### Starting Local Supabase
+
+```bash
+# Start local Supabase (first time pulls Docker images ~2-3 min)
+npm run supabase:start
+
+# Output shows connection info:
+#   API URL: http://127.0.0.1:54321
+#   anon key: eyJhbGciOiJIUzI1NiIs...
+#   service_role key: eyJhbGciOiJIUzI1NiIs...
+```
+
+### Switching to Local Database
+
+Create `.env.local` to override production values (`.env.local` takes priority over `.env`):
+
+```bash
+# .env.local - copy keys from supabase start output
+NEXT_PUBLIC_SUPABASE_URL=http://127.0.0.1:54321
+NEXT_PUBLIC_SUPABASE_ANON_KEY=<anon key from supabase start>
+SUPABASE_SERVICE_ROLE_KEY=<service_role key from supabase start>
+```
+
+To switch back to production: delete or rename `.env.local`.
+
+### Local URLs
+
+| Service | URL |
+|---------|-----|
+| API | http://127.0.0.1:54321 |
+| Studio (DB GUI) | http://127.0.0.1:54323 |
+| Inbucket (email) | http://127.0.0.1:54324 |
+| Database | postgresql://postgres:postgres@127.0.0.1:54322/postgres |
+
+### Test Credentials (Local Only)
+
+The seed creates a test admin user:
+- Email: `test@example.com`
+- Password: `password123`
+
+### Common Commands
+
+```bash
+npm run supabase:start   # Start local containers
+npm run supabase:stop    # Stop local containers
+npm run supabase:status  # Show status and keys
+npm run supabase:reset   # Reset DB (runs migrations + seed)
+npm run supabase:diff    # Generate migration from schema changes
+npm run supabase:push    # Push migrations to remote
+```
+
 ## Tech Stack
 
 | Layer | Technology |
