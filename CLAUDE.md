@@ -34,16 +34,15 @@ npm run supabase:start
 
 ### Switching to Local Database
 
-Create `.env.local` to override production values (`.env.local` takes priority over `.env`):
+Run the setup script to generate `.env.local` automatically:
 
 ```bash
-# .env.local - copy keys from supabase start output
-NEXT_PUBLIC_SUPABASE_URL=http://127.0.0.1:54321
-NEXT_PUBLIC_SUPABASE_ANON_KEY=<anon key from supabase start>
-SUPABASE_SERVICE_ROLE_KEY=<service_role key from supabase start>
+npm run supabase:env
 ```
 
-To switch back to production: delete or rename `.env.local`.
+This extracts keys from `supabase status` and creates `.env.local`. Any existing non-Supabase env vars (like PINECONE keys) are preserved.
+
+To switch back to production: delete `.env.local`.
 
 ### Local URLs
 
@@ -66,6 +65,7 @@ The seed creates a test admin user:
 npm run supabase:start   # Start local containers
 npm run supabase:stop    # Stop local containers
 npm run supabase:status  # Show status and keys
+npm run supabase:env     # Generate .env.local from local Supabase
 npm run supabase:reset   # Reset DB (runs migrations + seed)
 npm run supabase:diff    # Generate migration from schema changes
 npm run supabase:push    # Push migrations to remote

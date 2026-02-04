@@ -17,7 +17,8 @@
     "supabase:status": "supabase status",
     "supabase:reset": "supabase db reset",
     "supabase:diff": "supabase db diff",
-    "supabase:push": "supabase db push"
+    "supabase:push": "supabase db push",
+    "supabase:env": "./scripts/setup-local-env.sh"
   },
   "dependencies": {
     "@ai-sdk/openai": "^3.0.1",
