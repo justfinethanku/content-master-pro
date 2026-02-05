@@ -1,0 +1,4 @@
+interface:
+  display_name: "Database"
+  short_description: "Supabase and Pinecone database workflows"
+  default_prompt: "Handle Supabase migrations/local DB and Pinecone indexing for this repo. Confirm environment, use dry runs, and get approval before destructive or remote writes."

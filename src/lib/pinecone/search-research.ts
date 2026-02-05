@@ -1,7 +1,6 @@
 import { getPineconeClient, getPineconeIndexName } from "./client";
 import { NAMESPACE_SLUGS } from "./namespaces";
-
-const EMBEDDING_MODEL = "multilingual-e5-large";
+import { generateEmbedding } from "@/lib/ai/embeddings";
 
 export interface ResearchSearchResult {
   id: string;
@@ -34,19 +33,8 @@ export async function searchResearch(
   const index = client.index(getPineconeIndexName());
   const namespace = index.namespace(NAMESPACE_SLUGS.RESEARCH);
 
-  // Generate query embedding using Pinecone Inference API
-  const embeddings = await client.inference.embed(
-    EMBEDDING_MODEL,
-    [query],
-    { inputType: "query", truncate: "END" }
-  );
-
-  // Extract values from dense embedding
-  const embedding = embeddings.data[0];
-  if (!("values" in embedding)) {
-    throw new Error("Expected dense embedding with values");
-  }
-  const queryVector = embedding.values;
+  // Generate query embedding using the same model as indexing
+  const queryVector = await generateEmbedding(query);
 
   // Query Pinecone
   const queryResponse = await namespace.query({
