@@ -1,5 +1,13 @@
 # Content Routing & Scoring System
 
+## Status: ⚠️ DEPRECATED
+
+**Superseded by:** `content-routing-system-v2.md`
+
+**Reason:** This plan extends existing tables (`slack_ideas`, `nate_content_projects`) which creates tight coupling. The v2 plan uses linking tables for isolation.
+
+---
+
 ## Problem Statement
 
 Implement a comprehensive content routing and scoring system that:
