@@ -32,6 +32,7 @@ import {
   Calendar,
   PanelLeftClose,
   PanelLeftOpen,
+  Route,
 } from "lucide-react";
 
 const navigation = [
@@ -42,6 +43,7 @@ const navigation = [
   { name: "Captures", href: "/captures", icon: Bookmark },
   { name: "Search", href: "/search", icon: Search },
   { name: "History", href: "/history", icon: History },
+  { name: "Routing", href: "/routing", icon: Route },
   { name: "Studio", href: "/studio", icon: FlaskConical },
   { name: "Sync", href: "/sync", icon: RefreshCw },
   { name: "Settings", href: "/settings", icon: Settings },

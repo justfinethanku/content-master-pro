@@ -354,10 +354,11 @@ export async function reorderRoutingRules(
   supabase: SupabaseClient,
   ruleIds: string[]
 ) {
-  // Update priority based on array order (higher index = higher priority)
+  // Update priority based on array order (lower index = lower priority = evaluated first)
+  // UI sorts ascending by priority, so first item in array should have lowest priority
   const updates = ruleIds.map((id, index) => ({
     id,
-    priority: (ruleIds.length - index) * 10, // 10, 20, 30, etc.
+    priority: index * 10, // 0, 10, 20, etc.
   }));
 
   for (const update of updates) {
