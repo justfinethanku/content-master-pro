@@ -4,34 +4,20 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
 import {
-  FileText,
-  Cpu,
-  Globe,
-  Palette,
-  FlaskConical,
-  ScrollText,
-  Newspaper,
-  Route,
-  Calculator,
-  Layers,
-  CalendarClock,
+  LayoutDashboard,
+  Lightbulb,
+  Calendar,
+  Inbox,
 } from "lucide-react";
 
 const tabs = [
-  { href: "/studio/prompts", label: "Prompts", icon: FileText },
-  { href: "/studio/models", label: "Models", icon: Cpu },
-  { href: "/studio/destinations", label: "Destinations", icon: Globe },
-  { href: "/studio/guidelines", label: "Guidelines", icon: Palette },
-  { href: "/studio/test", label: "Test", icon: FlaskConical },
-  { href: "/studio/logs", label: "Logs", icon: ScrollText },
-  { href: "/studio/publications", label: "Publications", icon: Newspaper },
-  { href: "/studio/routing-rules", label: "Routing", icon: Route },
-  { href: "/studio/scoring", label: "Scoring", icon: Calculator },
-  { href: "/studio/tiers", label: "Tiers", icon: Layers },
-  { href: "/studio/calendar-slots", label: "Slots", icon: CalendarClock },
+  { href: "/routing", label: "Overview", icon: LayoutDashboard, exact: true },
+  { href: "/routing/ideas", label: "Ideas", icon: Lightbulb },
+  { href: "/routing/calendar", label: "Calendar", icon: Calendar },
+  { href: "/routing/queues", label: "Queues", icon: Inbox },
 ];
 
-export default function StudioLayout({
+export default function RoutingLayout({
   children,
 }: {
   children: React.ReactNode;
@@ -41,9 +27,9 @@ export default function StudioLayout({
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-3xl font-bold tracking-tight">Prompt Studio</h1>
+        <h1 className="text-3xl font-bold tracking-tight">Content Routing</h1>
         <p className="text-muted-foreground">
-          Configure prompts, models, destinations, and guidelines in one place.
+          Route, score, and schedule content across publications.
         </p>
       </div>
 
@@ -51,7 +37,9 @@ export default function StudioLayout({
         <nav className="flex gap-1 -mb-px">
           {tabs.map((tab) => {
             const Icon = tab.icon;
-            const isActive = pathname === tab.href;
+            const isActive = tab.exact
+              ? pathname === tab.href
+              : pathname.startsWith(tab.href);
             return (
               <Link
                 key={tab.href}
