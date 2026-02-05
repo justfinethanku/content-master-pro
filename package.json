@@ -11,7 +11,15 @@
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "test": "vitest",
-    "test:coverage": "vitest --coverage"
+    "test:coverage": "vitest --coverage",
+    "supabase:start": "supabase start",
+    "supabase:stop": "supabase stop",
+    "supabase:status": "supabase status",
+    "supabase:reset": "supabase db reset",
+    "supabase:diff": "supabase db diff",
+    "supabase:push": "supabase db push",
+    "supabase:env": "./scripts/setup-local-env.sh",
+    "supabase:seed-user": "./scripts/seed-test-user.sh"
   },
   "dependencies": {
     "@ai-sdk/openai": "^3.0.1",

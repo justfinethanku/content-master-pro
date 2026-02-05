@@ -1,0 +1,31 @@
+-- Local Development Seed Data
+-- This file runs AFTER migrations during `supabase db reset`
+--
+-- Most seed data (ai_models, app_settings, prompts, pinecone_namespaces) 
+-- is already in the migrations. This file is for local-dev-specific data.
+
+-- =============================================================================
+-- TEST ADMIN USER
+-- =============================================================================
+-- Test user is created via Auth API (see scripts/seed-test-user.sh)
+-- Run after supabase start: npm run supabase:seed-user
+--
+-- Email: test@example.com
+-- Password: password123
+--
+-- This approach uses the official Supabase Auth API, making it resilient
+-- to auth schema changes across Supabase versions.
+
+-- =============================================================================
+-- LOCAL DEV NOTES
+-- =============================================================================
+-- After running `supabase start`:
+--   - Studio: http://127.0.0.1:54323
+--   - API: http://127.0.0.1:54321
+--   - Inbucket (email): http://127.0.0.1:54324
+--
+-- Test credentials:
+--   Email: test@example.com
+--   Password: password123
+--
+-- To reset database: supabase db reset
