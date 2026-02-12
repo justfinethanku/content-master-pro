@@ -44,6 +44,21 @@ const STATUS_CONFIG: Record<
   },
 };
 
+// Short labels for asset type pills on calendar cards
+const ASSET_SHORT_LABELS: Record<string, string> = {
+  post: "Post",
+  transcript_youtube: "YT Script",
+  transcript_tiktok: "TT Script",
+  description_youtube: "YT Desc",
+  description_tiktok: "TT Desc",
+  prompts: "Prompts",
+  promptkit: "Prompt Kit",
+  guide: "Guide",
+  post_linkedin: "LinkedIn",
+  post_substack: "Substack",
+  image_substack: "Image",
+};
+
 // Parse a date string as local time (avoids UTC shift for date-only strings like "2025-02-15")
 function parseLocalDate(dateString: string): Date {
   // If it's a bare date (no "T"), treat as local midnight
@@ -164,11 +179,23 @@ export function ProjectCard({ project, variant = "compact", isToday = false }: P
         )}
       </div>
 
-      {/* Status at bottom - very small */}
-      <div className="mt-3 pt-2">
+      {/* Status + asset types at bottom */}
+      <div className="mt-3 pt-2 flex items-center justify-between gap-2">
         <span className={cn("text-[10px] font-medium uppercase tracking-wider", statusConfig.textClass)}>
           {statusConfig.label}
         </span>
+        {project.asset_types.length > 0 && (
+          <div className="flex items-center gap-1 flex-wrap justify-end">
+            {project.asset_types.map((type) => (
+              <span
+                key={type}
+                className="text-[9px] font-medium px-1.5 py-0.5 rounded-full bg-stone-200/80 text-stone-600 dark:bg-stone-800 dark:text-stone-400"
+              >
+                {ASSET_SHORT_LABELS[type] ?? type}
+              </span>
+            ))}
+          </div>
+        )}
       </div>
     </Link>
   );

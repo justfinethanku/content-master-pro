@@ -358,6 +358,7 @@ export function useCreatePromptKitAsset() {
 
 export interface CalendarProject extends Project {
   content_summary: string | null;
+  asset_types: string[];
 }
 
 export interface CalendarFilters {
@@ -391,28 +392,37 @@ export function useCalendarProjects(filters: CalendarFilters) {
       if (error) throw error;
       if (!projects || projects.length === 0) return [];
 
-      // Fetch first post asset content for each project (for summary)
+      // Fetch assets for each project (content summary + asset types)
       const projectUuids = projects.map((p) => p.id);
       const { data: assets } = await supabase
         .from("project_assets")
-        .select("project_id, content")
-        .eq("asset_type", "post")
+        .select("project_id, asset_type, content")
         .in("project_id", projectUuids)
         .order("created_at", { ascending: true });
 
-      // Build map: project_id -> first post content (truncated)
+      // Build maps: project_id -> first post content, project_id -> asset types
       const summaryMap = new Map<string, string>();
+      const assetTypeMap = new Map<string, Set<string>>();
       if (assets) {
         for (const asset of assets) {
-          if (!summaryMap.has(asset.project_id) && asset.content) {
+          // Content summary: use first post asset's content
+          if (asset.asset_type === "post" && !summaryMap.has(asset.project_id) && asset.content) {
             summaryMap.set(asset.project_id, asset.content);
           }
+          // Collect all asset types
+          if (!assetTypeMap.has(asset.project_id)) {
+            assetTypeMap.set(asset.project_id, new Set());
+          }
+          assetTypeMap.get(asset.project_id)!.add(asset.asset_type);
         }
       }
 
       return projects.map((project) => ({
         ...project,
         content_summary: summaryMap.get(project.id) ?? null,
+        asset_types: assetTypeMap.has(project.id)
+          ? Array.from(assetTypeMap.get(project.id)!)
+          : [],
       })) as CalendarProject[];
     },
   });
