@@ -186,9 +186,12 @@ serve(async (req: Request) => {
       modelConfig.defaultMaxTokens;
 
     // Determine reasoning parameters (only if model supports it)
-    const reasoningEnabled =
-      modelConfig.supportsThinking &&
-      promptConfig.apiConfig.reasoning_enabled === true;
+    // "adaptive" = Claude 4.6+ adaptive thinking (model decides when/how much to think)
+    // true = legacy budget-based thinking (deprecated in 4.6+)
+    const thinkingMode = modelConfig.supportsThinking
+      ? promptConfig.apiConfig.thinking ?? (promptConfig.apiConfig.reasoning_enabled ? "budget" : null)
+      : null;
+    const reasoningEnabled = thinkingMode === "budget";
     const reasoningBudget =
       reasoningEnabled
         ? (promptConfig.apiConfig.reasoning_budget ?? 10000)
@@ -201,6 +204,7 @@ serve(async (req: Request) => {
       model_type: modelConfig.modelType,
       temperature,
       maxTokens,
+      thinkingMode,
       reasoningEnabled,
       reasoningBudget,
       "promptConfig.apiConfig": promptConfig.apiConfig,
@@ -221,6 +225,7 @@ serve(async (req: Request) => {
             maxTokens,
             sessionId: session_id,
             promptSlug: prompt_slug,
+            thinkingMode,
             reasoningEnabled,
             reasoningBudget,
           });
@@ -231,6 +236,7 @@ serve(async (req: Request) => {
           userMessage,
           temperature,
           maxTokens,
+          thinkingMode,
           reasoningEnabled,
           reasoningBudget,
         });
@@ -400,10 +406,11 @@ async function callTextModel(params: {
   userMessage: string;
   temperature: number;
   maxTokens: number;
+  thinkingMode?: string | null;
   reasoningEnabled?: boolean;
   reasoningBudget?: number;
 }): Promise<AICallResult> {
-  const { modelId, systemPrompt, userMessage, temperature, maxTokens, reasoningEnabled, reasoningBudget } = params;
+  const { modelId, systemPrompt, userMessage, temperature, maxTokens, thinkingMode, reasoningEnabled, reasoningBudget } = params;
 
   const gatewayApiKey = Deno.env.get("VERCEL_AI_GATEWAY_API_KEY");
   if (!gatewayApiKey) {
@@ -420,9 +427,14 @@ async function callTextModel(params: {
     max_tokens: maxTokens,
   };
 
-  // Add reasoning (extended thinking) if enabled
-  // Note: When reasoning is enabled, temperature must be omitted (only temp=1 works)
-  if (reasoningEnabled && reasoningBudget && reasoningBudget > 0) {
+  // Add reasoning/thinking based on mode
+  // Note: When reasoning/thinking is enabled, temperature must be omitted
+  if (thinkingMode === "adaptive") {
+    // Claude 4.6+ adaptive thinking — model decides when and how much to think
+    requestBody.reasoning = { type: "adaptive" };
+    // Don't set temperature when thinking is enabled
+  } else if (reasoningEnabled && reasoningBudget && reasoningBudget > 0) {
+    // Legacy budget-based thinking (deprecated in 4.6+)
     requestBody.reasoning = {
       enabled: true,
       budget_tokens: reasoningBudget,
@@ -468,10 +480,11 @@ async function callTextModelStreaming(params: {
   maxTokens: number;
   sessionId?: string;
   promptSlug: string;
+  thinkingMode?: string | null;
   reasoningEnabled?: boolean;
   reasoningBudget?: number;
 }): Promise<Response> {
-  const { modelId, systemPrompt, userMessage, temperature, maxTokens, sessionId, promptSlug, reasoningEnabled, reasoningBudget } = params;
+  const { modelId, systemPrompt, userMessage, temperature, maxTokens, sessionId, promptSlug, thinkingMode, reasoningEnabled, reasoningBudget } = params;
 
   const gatewayApiKey = Deno.env.get("VERCEL_AI_GATEWAY_API_KEY");
   if (!gatewayApiKey) {
@@ -491,13 +504,17 @@ async function callTextModelStreaming(params: {
     stream: true,
   };
 
-  // Add reasoning (extended thinking) if enabled
-  if (reasoningEnabled && reasoningBudget && reasoningBudget > 0) {
+  // Add reasoning/thinking based on mode
+  // Note: When reasoning/thinking is enabled, temperature must be omitted
+  if (thinkingMode === "adaptive") {
+    // Claude 4.6+ adaptive thinking
+    requestBody.reasoning = { type: "adaptive" };
+  } else if (reasoningEnabled && reasoningBudget && reasoningBudget > 0) {
+    // Legacy budget-based thinking
     requestBody.reasoning = {
       enabled: true,
       budget_tokens: reasoningBudget,
     };
-    // Don't set temperature when reasoning is enabled
   } else {
     requestBody.temperature = temperature;
   }

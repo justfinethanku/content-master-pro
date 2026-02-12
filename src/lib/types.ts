@@ -641,79 +641,79 @@ export interface IdeaVectorMetadata {
 }
 
 // ============================================================================
-// Content Calendar & Project Management Types
+// Content Calendar & Project Management Types (NEW — matches projects + project_assets tables)
 // ============================================================================
 
 // Project status workflow
-export type ProjectStatus = "draft" | "review" | "scheduled" | "published";
+export type ProjectStatus =
+  | "draft"
+  | "in_progress"
+  | "review"
+  | "scheduled"
+  | "published"
+  | "archived";
 
 // Asset status
-export type AssetStatus = "draft" | "ready" | "final";
+export type AssetStatus =
+  | "draft"
+  | "ready"
+  | "review"
+  | "final"
+  | "published"
+  | "archived";
 
-// Asset type classification
-export type AssetType =
-  | "post"
-  | "transcript_youtube"
-  | "transcript_tiktok"
-  | "description_youtube"
-  | "description_tiktok"
-  | "prompts"
-  | "guide"
-  | "post_linkedin"
-  | "post_substack"
-  | "image_substack";
-
-// Content Project - main project entity
-export interface ContentProject {
+// Project — one row per content piece / publication
+export interface Project {
   id: string;
   project_id: string; // yyyymmdd_xxx format
-  title: string;
+  name: string;
   scheduled_date: string | null;
   status: ProjectStatus;
-  target_platforms: string[];
-  notes: string | null;
-  video_runtime: string | null;
+  metadata: Record<string, unknown>;
   created_by: string;
   created_at: string;
   updated_at: string;
 }
 
-// Content Project with summary from related assets (for calendar view)
-export interface ContentProjectWithSummary extends ContentProject {
-  content_summary?: string | null;
+// Project with joined asset summary data
+export interface ProjectWithAssets extends Project {
+  asset_count?: number;
+  asset_types?: string[];
 }
 
-export interface ContentProjectInsert {
+export interface ProjectInsert {
   project_id: string;
-  title: string;
+  name: string;
   scheduled_date?: string | null;
   status?: ProjectStatus;
-  target_platforms?: string[];
-  notes?: string | null;
-  video_runtime?: string | null;
+  metadata?: Record<string, unknown>;
   created_by: string;
 }
 
-export interface ContentProjectUpdate {
+export interface ProjectUpdate {
   project_id?: string;
-  title?: string;
+  name?: string;
   scheduled_date?: string | null;
   status?: ProjectStatus;
-  target_platforms?: string[];
-  notes?: string | null;
-  video_runtime?: string | null;
+  metadata?: Record<string, unknown>;
 }
 
-// Project Asset - individual content pieces within a project
+// ProjectAsset — individual deliverables within a project
 export interface ProjectAsset {
   id: string;
   project_id: string;
-  asset_type: AssetType | string;
-  title: string | null;
+  asset_id: string; // yyyymmdd_xxx_type_platform_variant
+  name: string;
+  asset_type: string;
+  platform: string | null;
+  variant: string | null;
   content: string | null;
-  current_version: number;
+  file_url: string | null;
+  version: number;
   status: AssetStatus;
-  external_url: string | null;
+  metadata: Record<string, unknown>;
+  published_url: string | null;
+  published_at: string | null;
   locked_by: string | null;
   locked_at: string | null;
   created_at: string;
@@ -722,68 +722,31 @@ export interface ProjectAsset {
 
 export interface ProjectAssetInsert {
   project_id: string;
-  asset_type: AssetType | string;
-  title?: string | null;
+  asset_id: string;
+  name: string;
+  asset_type: string;
+  platform?: string | null;
+  variant?: string | null;
   content?: string | null;
+  file_url?: string | null;
   status?: AssetStatus;
-  external_url?: string | null;
+  metadata?: Record<string, unknown>;
 }
 
 export interface ProjectAssetUpdate {
-  asset_type?: AssetType | string;
-  title?: string | null;
+  name?: string;
+  asset_type?: string;
+  platform?: string | null;
+  variant?: string | null;
   content?: string | null;
-  current_version?: number;
+  file_url?: string | null;
+  version?: number;
   status?: AssetStatus;
-  external_url?: string | null;
+  metadata?: Record<string, unknown>;
+  published_url?: string | null;
+  published_at?: string | null;
   locked_by?: string | null;
   locked_at?: string | null;
-}
-
-// Asset Version - version history for assets
-export interface AssetVersion {
-  id: string;
-  asset_id: string;
-  version_number: number;
-  content: string;
-  created_by: string;
-  created_at: string;
-}
-
-export interface AssetVersionInsert {
-  asset_id: string;
-  version_number: number;
-  content: string;
-  created_by: string;
-}
-
-// Project Publication - track where/when content was published
-export interface ProjectPublication {
-  id: string;
-  project_id: string;
-  destination_id: string | null;
-  platform: string;
-  published_at: string;
-  published_url: string | null;
-  metadata: Record<string, unknown>;
-  created_at: string;
-}
-
-export interface ProjectPublicationInsert {
-  project_id: string;
-  destination_id?: string | null;
-  platform: string;
-  published_at: string;
-  published_url?: string | null;
-  metadata?: Record<string, unknown>;
-}
-
-export interface ProjectPublicationUpdate {
-  destination_id?: string | null;
-  platform?: string;
-  published_at?: string;
-  published_url?: string | null;
-  metadata?: Record<string, unknown>;
 }
 
 // Lock status for edit locking
@@ -793,6 +756,23 @@ export interface LockStatus {
   lockedAt: string | null;
   isLockedByCurrentUser: boolean;
 }
+
+// ============================================================================
+// LEGACY types (commented out — kept for reference during rebuild)
+// ============================================================================
+// export type OldAssetType =
+//   | "post" | "transcript_youtube" | "transcript_tiktok"
+//   | "description_youtube" | "description_tiktok" | "prompts"
+//   | "guide" | "post_linkedin" | "post_substack" | "image_substack";
+// export interface ContentProject { ... }
+// export interface ContentProjectWithSummary extends ContentProject { ... }
+// export interface ContentProjectInsert { ... }
+// export interface ContentProjectUpdate { ... }
+// export interface AssetVersion { ... }
+// export interface AssetVersionInsert { ... }
+// export interface ProjectPublication { ... }
+// export interface ProjectPublicationInsert { ... }
+// export interface ProjectPublicationUpdate { ... }
 
 // ============================================================================
 // Content Routing System Types
@@ -1279,11 +1259,11 @@ export interface ProjectRoutingUpdate {
 
 // Project Routing with joined data
 export interface ProjectRoutingWithProject extends ProjectRouting {
-  project: ContentProject;
+  project: Project;
 }
 
 export interface ProjectRoutingWithAll extends ProjectRouting {
-  project: ContentProject;
+  project: Project;
   idea_routing?: IdeaRouting;
   slot?: CalendarSlot;
 }

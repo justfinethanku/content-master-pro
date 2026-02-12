@@ -1,0 +1,390 @@
+"use client";
+
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { createClient } from "@/lib/supabase/client";
+import type {
+  Project,
+  ProjectAsset,
+  ProjectInsert,
+  ProjectAssetInsert,
+  ProjectStatus,
+} from "@/lib/types";
+
+// Query key factory
+export const deliverableKeys = {
+  all: ["deliverables"] as const,
+  lists: () => [...deliverableKeys.all, "list"] as const,
+  list: (filters: DeliverableFilters) =>
+    [...deliverableKeys.lists(), filters] as const,
+  details: () => [...deliverableKeys.all, "detail"] as const,
+  detail: (id: string) => [...deliverableKeys.details(), id] as const,
+  asset: (assetId: string) =>
+    [...deliverableKeys.all, "asset", assetId] as const,
+};
+
+export interface DeliverableFilters {
+  status?: ProjectStatus;
+  search?: string;
+  sortBy?: "date" | "name";
+  sortDir?: "asc" | "desc";
+}
+
+export interface DeliverableProject extends Project {
+  asset_count: number;
+  asset_types: string[];
+}
+
+/**
+ * Fetch all projects with asset summary data
+ */
+export function useDeliverables(filters?: DeliverableFilters) {
+  return useQuery({
+    queryKey: deliverableKeys.list(filters ?? {}),
+    queryFn: async (): Promise<DeliverableProject[]> => {
+      const supabase = createClient();
+
+      // Fetch projects
+      let query = supabase.from("projects").select("*");
+
+      if (filters?.status) {
+        query = query.eq("status", filters.status);
+      }
+
+      if (filters?.search) {
+        query = query.ilike("name", `%${filters.search}%`);
+      }
+
+      const sortBy = filters?.sortBy ?? "date";
+      const sortDir = filters?.sortDir ?? "desc";
+
+      if (sortBy === "date") {
+        query = query.order("scheduled_date", {
+          ascending: sortDir === "asc",
+          nullsFirst: false,
+        });
+      } else {
+        query = query.order("name", { ascending: sortDir === "asc" });
+      }
+
+      query = query.limit(20);
+
+      const { data: projects, error } = await query;
+      if (error) throw error;
+      if (!projects || projects.length === 0) return [];
+
+      // Fetch asset summaries for all projects in one query
+      const projectUuids = projects.map((p) => p.id);
+      const { data: assets } = await supabase
+        .from("project_assets")
+        .select("project_id, asset_type")
+        .in("project_id", projectUuids);
+
+      // Build a map of project_id -> { count, types }
+      const assetMap = new Map<
+        string,
+        { count: number; types: Set<string> }
+      >();
+      if (assets) {
+        for (const asset of assets) {
+          const existing = assetMap.get(asset.project_id);
+          if (existing) {
+            existing.count++;
+            existing.types.add(asset.asset_type);
+          } else {
+            assetMap.set(asset.project_id, {
+              count: 1,
+              types: new Set([asset.asset_type]),
+            });
+          }
+        }
+      }
+
+      return projects.map((project) => {
+        const summary = assetMap.get(project.id);
+        return {
+          ...project,
+          asset_count: summary?.count ?? 0,
+          asset_types: summary ? Array.from(summary.types) : [],
+        } as DeliverableProject;
+      });
+    },
+  });
+}
+
+/**
+ * Fetch a single project with all its assets
+ */
+export function useDeliverable(projectId: string | null) {
+  return useQuery({
+    queryKey: deliverableKeys.detail(projectId ?? ""),
+    queryFn: async (): Promise<{
+      project: Project;
+      assets: ProjectAsset[];
+    } | null> => {
+      if (!projectId) return null;
+
+      const supabase = createClient();
+
+      const { data: project, error: projectError } = await supabase
+        .from("projects")
+        .select("*")
+        .eq("id", projectId)
+        .single();
+
+      if (projectError) {
+        if (projectError.code === "PGRST116") return null;
+        throw projectError;
+      }
+
+      const { data: assets, error: assetsError } = await supabase
+        .from("project_assets")
+        .select("*")
+        .eq("project_id", projectId)
+        .order("asset_type", { ascending: true });
+
+      if (assetsError) throw assetsError;
+
+      return {
+        project: project as Project,
+        assets: (assets || []) as ProjectAsset[],
+      };
+    },
+    enabled: !!projectId,
+  });
+}
+
+/**
+ * Fetch a single asset by UUID
+ */
+export function useDeliverableAsset(assetId: string | null) {
+  return useQuery({
+    queryKey: deliverableKeys.asset(assetId ?? ""),
+    queryFn: async (): Promise<ProjectAsset | null> => {
+      if (!assetId) return null;
+
+      const supabase = createClient();
+
+      const { data, error } = await supabase
+        .from("project_assets")
+        .select("*")
+        .eq("id", assetId)
+        .single();
+
+      if (error) {
+        if (error.code === "PGRST116") return null;
+        throw error;
+      }
+
+      return data as ProjectAsset;
+    },
+    enabled: !!assetId,
+  });
+}
+
+/**
+ * Fetch all prompt kit assets for a given project (asset_type = "promptkit")
+ */
+export function useProjectPromptKits(projectId: string | null) {
+  return useQuery({
+    queryKey: [...deliverableKeys.detail(projectId ?? ""), "prompt-kits"],
+    queryFn: async (): Promise<ProjectAsset[]> => {
+      if (!projectId) return [];
+
+      const supabase = createClient();
+
+      const { data, error } = await supabase
+        .from("project_assets")
+        .select("*")
+        .eq("project_id", projectId)
+        .eq("asset_type", "promptkit")
+        .order("created_at", { ascending: true });
+
+      if (error) throw error;
+      return (data || []) as ProjectAsset[];
+    },
+    enabled: !!projectId,
+  });
+}
+
+/**
+ * Generate a project_id in yyyymmdd_xxx format
+ */
+export function generateProjectId(date: Date = new Date()): string {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  const random = Math.random().toString(36).substring(2, 5);
+  return `${year}${month}${day}_${random}`;
+}
+
+/**
+ * Create a new project with an initial post asset
+ */
+export function useCreateProject() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async ({
+      name,
+      content,
+      metadata,
+    }: {
+      name: string;
+      content: string;
+      metadata?: Record<string, unknown>;
+    }): Promise<Project> => {
+      const supabase = createClient();
+
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+      if (!user) throw new Error("Not authenticated");
+
+      const projectId = generateProjectId();
+
+      // Insert project
+      const projectInsert: ProjectInsert = {
+        project_id: projectId,
+        name,
+        status: "draft",
+        created_by: user.id,
+        metadata: metadata ?? {},
+      };
+
+      const { data: project, error: projectError } = await supabase
+        .from("projects")
+        .insert(projectInsert)
+        .select()
+        .single();
+
+      if (projectError) throw projectError;
+
+      // Insert initial post asset
+      const assetId = `${projectId}_post_substack_main`;
+      const assetInsert: ProjectAssetInsert = {
+        project_id: project.id,
+        asset_id: assetId,
+        name,
+        asset_type: "post",
+        content,
+        status: "draft",
+        metadata: metadata ?? {},
+      };
+
+      const { error: assetError } = await supabase
+        .from("project_assets")
+        .insert(assetInsert);
+
+      if (assetError) throw assetError;
+
+      return project as Project;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: deliverableKeys.lists() });
+    },
+  });
+}
+
+/**
+ * Create a prompt kit asset for a project
+ */
+export function useCreatePromptKitAsset() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async ({
+      projectId,
+      name,
+      content,
+    }: {
+      projectId: string;
+      name: string;
+      content: string;
+    }): Promise<ProjectAsset> => {
+      const supabase = createClient();
+
+      // Look up the project to get its project_id pattern
+      const { data: project, error: projectError } = await supabase
+        .from("projects")
+        .select("project_id")
+        .eq("id", projectId)
+        .single();
+
+      if (projectError) throw projectError;
+
+      // Count existing prompt kits to generate a unique suffix
+      const { count } = await supabase
+        .from("project_assets")
+        .select("*", { count: "exact", head: true })
+        .eq("project_id", projectId)
+        .eq("asset_type", "promptkit");
+
+      const suffix = (count ?? 0) + 1;
+      const assetId = `${project.project_id}_promptkit_${suffix}`;
+
+      const assetInsert: ProjectAssetInsert = {
+        project_id: projectId,
+        asset_id: assetId,
+        name,
+        asset_type: "promptkit",
+        content,
+        status: "draft",
+      };
+
+      const { data, error } = await supabase
+        .from("project_assets")
+        .insert(assetInsert)
+        .select()
+        .single();
+
+      if (error) throw error;
+      return data as ProjectAsset;
+    },
+    onSuccess: (_data, variables) => {
+      queryClient.invalidateQueries({
+        queryKey: deliverableKeys.detail(variables.projectId),
+      });
+      queryClient.invalidateQueries({
+        queryKey: [
+          ...deliverableKeys.detail(variables.projectId),
+          "prompt-kits",
+        ],
+      });
+    },
+  });
+}
+
+/**
+ * Update a project's name
+ */
+export function useUpdateProjectName() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async ({
+      id,
+      name,
+    }: {
+      id: string;
+      name: string;
+    }): Promise<Project> => {
+      const supabase = createClient();
+
+      const { data, error } = await supabase
+        .from("projects")
+        .update({ name })
+        .eq("id", id)
+        .select()
+        .single();
+
+      if (error) throw error;
+      return data as Project;
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: deliverableKeys.lists() });
+      queryClient.invalidateQueries({
+        queryKey: deliverableKeys.detail(data.id),
+      });
+    },
+  });
+}

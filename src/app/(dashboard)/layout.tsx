@@ -24,7 +24,9 @@ export default async function DashboardLayout({
         <Sidebar />
         <div className="flex flex-1 flex-col">
           <Header user={user} />
-          <main className="flex-1 p-6">{children}</main>
+          <main className="flex-1 p-4 md:p-6">
+            <div className="mx-auto w-full max-w-7xl">{children}</div>
+          </main>
         </div>
       </div>
     </SidebarProvider>
