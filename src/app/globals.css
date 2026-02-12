@@ -49,22 +49,22 @@
 
 :root {
   --radius: 0.625rem;
-  --background: #ecebf0;
+  --background: #f8f6f1;
   --foreground: #1a1a1a;
-  --card: #eeeeee;
+  --card: #ffffff;
   --card-foreground: #1a1a1a;
-  --popover: #eeeeee;
+  --popover: #ffffff;
   --popover-foreground: #1a1a1a;
   --primary: #333333;
   --primary-foreground: #ffffff;
-  --secondary: #dddddd;
+  --secondary: #ede9e3;
   --secondary-foreground: #333333;
-  --muted: #cccccc;
+  --muted: #e8e4dd;
   --muted-foreground: #555555;
-  --accent: #dddddd;
+  --accent: #ede9e3;
   --accent-foreground: #333333;
   --destructive: oklch(0.577 0.245 27.325);
-  --border: #aaaaaa;
+  --border: #d4cfc7;
   --input: #ffffff;
   --ring: #2e8f2e;
   --chart-1: oklch(0.646 0.222 41.116);

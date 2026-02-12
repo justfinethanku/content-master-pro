@@ -21,8 +21,8 @@ import {
 } from "lucide-react";
 
 const navigation = [
-  { name: "Deliverables", href: "/deliverables", icon: Package },
   { name: "Calendar", href: "/calendar", icon: Calendar },
+  { name: "Deliverables", href: "/deliverables", icon: Package },
 ];
 
 // Commented out during frontend rebuild — will re-enable as pages are rebuilt

@@ -250,13 +250,13 @@ export default function DeliverableDetailPage() {
   return (
     <div className="space-y-6">
       {/* Back link */}
-      <Link
-        href="/deliverables"
+      <button
+        onClick={() => router.back()}
         className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground transition-colors"
       >
         <ArrowLeft className="h-4 w-4" />
-        Back to deliverables
-      </Link>
+        Back
+      </button>
 
       {/* Project header */}
       <div className="space-y-3">

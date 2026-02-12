@@ -430,6 +430,7 @@ export function useCalendarProjects(filters: CalendarFilters) {
 
 /**
  * Update a project's scheduled_date (for drag-and-drop rescheduling)
+ * Optionally updates status (e.g. auto-set "scheduled" when moving to future)
  */
 export function useUpdateProjectSchedule() {
   const queryClient = useQueryClient();
@@ -438,15 +439,24 @@ export function useUpdateProjectSchedule() {
     mutationFn: async ({
       id,
       scheduled_date,
+      status,
     }: {
       id: string;
       scheduled_date: string;
+      status?: ProjectStatus;
     }): Promise<Project> => {
       const supabase = createClient();
 
+      const payload: { scheduled_date: string; status?: ProjectStatus } = {
+        scheduled_date,
+      };
+      if (status) {
+        payload.status = status;
+      }
+
       const { data, error } = await supabase
         .from("projects")
-        .update({ scheduled_date })
+        .update(payload)
         .eq("id", id)
         .select()
         .single();
@@ -456,6 +466,62 @@ export function useUpdateProjectSchedule() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: deliverableKeys.lists() });
+    },
+  });
+}
+
+/**
+ * Fetch unscheduled projects (no scheduled_date) for the backlog panel
+ */
+export function useUnscheduledProjects() {
+  return useQuery({
+    queryKey: [...deliverableKeys.lists(), "unscheduled"] as const,
+    queryFn: async (): Promise<CalendarProject[]> => {
+      const supabase = createClient();
+
+      const { data: projects, error } = await supabase
+        .from("projects")
+        .select("*")
+        .is("scheduled_date", null)
+        .order("created_at", { ascending: false })
+        .limit(50);
+
+      if (error) throw error;
+      if (!projects || projects.length === 0) return [];
+
+      // Fetch assets for content summary + types
+      const projectUuids = projects.map((p) => p.id);
+      const { data: assets } = await supabase
+        .from("project_assets")
+        .select("project_id, asset_type, content")
+        .in("project_id", projectUuids)
+        .order("created_at", { ascending: true });
+
+      const summaryMap = new Map<string, string>();
+      const assetTypeMap = new Map<string, Set<string>>();
+      if (assets) {
+        for (const asset of assets) {
+          if (
+            asset.asset_type === "post" &&
+            !summaryMap.has(asset.project_id) &&
+            asset.content
+          ) {
+            summaryMap.set(asset.project_id, asset.content);
+          }
+          if (!assetTypeMap.has(asset.project_id)) {
+            assetTypeMap.set(asset.project_id, new Set());
+          }
+          assetTypeMap.get(asset.project_id)!.add(asset.asset_type);
+        }
+      }
+
+      return projects.map((project) => ({
+        ...project,
+        content_summary: summaryMap.get(project.id) ?? null,
+        asset_types: assetTypeMap.has(project.id)
+          ? Array.from(assetTypeMap.get(project.id)!)
+          : [],
+      })) as CalendarProject[];
     },
   });
 }

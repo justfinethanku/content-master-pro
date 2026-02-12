@@ -2,7 +2,15 @@
 
 import { useState, useMemo, useEffect, useCallback } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
-import { DndContext, DragEndEvent, DragOverlay } from "@dnd-kit/core";
+import {
+  DndContext,
+  DragEndEvent,
+  DragOverlay,
+  PointerSensor,
+  KeyboardSensor,
+  useSensor,
+  useSensors,
+} from "@dnd-kit/core";
 import { CalendarGrid } from "./calendar-grid";
 import { ProjectCard, STATUS_CONFIG } from "./project-card";
 import { Button } from "@/components/ui/button";
@@ -13,7 +21,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { useCalendarProjects, useUpdateProjectSchedule, type CalendarProject, type CalendarFilters } from "@/hooks/use-deliverables";
+import { useCalendarProjects, useUnscheduledProjects, useUpdateProjectSchedule, type CalendarProject, type CalendarFilters } from "@/hooks/use-deliverables";
+import { BacklogPanel } from "./backlog-panel";
 import type { ProjectStatus } from "@/lib/types";
 import {
   ChevronLeft,
@@ -97,6 +106,13 @@ export function CalendarView() {
   }, [currentDate, viewMode, statusFilter, updateUrlParams]);
 
   const updateProject = useUpdateProjectSchedule();
+  const { data: unscheduledProjects = [] } = useUnscheduledProjects();
+
+  // DnD sensors: PointerSensor with 8px activation distance prevents accidental drags when clicking links
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
+    useSensor(KeyboardSensor)
+  );
 
   // Calculate date range for query
   const dateRange = useMemo(() => {
@@ -194,11 +210,27 @@ export function CalendarView() {
     if (currentScheduledDate === targetDate) return;
 
     try {
+      // Auto-set status to "scheduled" when moving a published project to a future date
+      const today = new Date().toISOString().split("T")[0];
+      const autoStatus =
+        targetDate > today && projectData.status === "published"
+          ? ("scheduled" as const)
+          : undefined;
+
       await updateProject.mutateAsync({
         id: projectData.id,
         scheduled_date: targetDate,
+        status: autoStatus,
       });
-      toast.success(`Moved "${projectData.name}" to ${new Date(targetDate).toLocaleDateString()}`);
+
+      const dateLabel = new Date(targetDate + "T00:00:00").toLocaleDateString();
+      if (autoStatus) {
+        toast.success(
+          `Moved "${projectData.name}" to ${dateLabel} — status changed to scheduled`
+        );
+      } else {
+        toast.success(`Moved "${projectData.name}" to ${dateLabel}`);
+      }
     } catch {
       toast.error("Failed to update project date");
     }
@@ -292,7 +324,8 @@ export function CalendarView() {
           </div>
         </div>
       ) : (
-        <DndContext onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
+        <DndContext sensors={sensors} onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
+          <BacklogPanel projects={unscheduledProjects} />
           <CalendarGrid
             projects={projects}
             viewMode={viewMode}
