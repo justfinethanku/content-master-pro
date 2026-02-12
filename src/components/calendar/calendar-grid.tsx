@@ -4,13 +4,13 @@ import { useMemo, useState, useEffect } from "react";
 import { useDroppable } from "@dnd-kit/core";
 import { DraggableProjectCard } from "./draggable-project-card";
 import { ProjectCard, EmptyDayCard } from "./project-card";
-import type { ContentProject, ContentProjectWithSummary } from "@/lib/types";
+import type { CalendarProject } from "@/hooks/use-deliverables";
 import { cn } from "@/lib/utils";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
 interface CalendarGridProps {
-  projects: ContentProjectWithSummary[];
+  projects: CalendarProject[];
   viewMode: "month" | "week";
   currentDate: Date;
   scrollToToday?: number; // Increment this to trigger scroll to today
@@ -78,7 +78,7 @@ const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 // Droppable day cell for month view
 interface DroppableDayMonthProps {
   date: Date;
-  projects: ContentProject[];
+  projects: CalendarProject[];
   inCurrentMonth: boolean;
 }
 
@@ -131,12 +131,12 @@ function DroppableDayMonth({ date, projects, inCurrentMonth }: DroppableDayMonth
 
 // Card item type for gallery - either a project or an empty day placeholder
 type GalleryItem =
-  | { type: "project"; project: ContentProjectWithSummary; isToday: boolean }
+  | { type: "project"; project: CalendarProject; isToday: boolean }
   | { type: "empty"; date: string; isToday: boolean };
 
 // Gallery carousel for week view
 interface GalleryCarouselProps {
-  projects: ContentProjectWithSummary[];
+  projects: CalendarProject[];
   days: Date[];
   scrollToToday?: number;
 }
@@ -149,7 +149,7 @@ function GalleryCarousel({ projects, days, scrollToToday }: GalleryCarouselProps
   // Also track the index of today's first item
   const { galleryItems, todayIndex } = useMemo(() => {
     const items: GalleryItem[] = [];
-    const projectsByDate = new Map<string, ContentProjectWithSummary[]>();
+    const projectsByDate = new Map<string, CalendarProject[]>();
     let foundTodayIndex = -1;
 
     // Group projects by date
@@ -276,7 +276,7 @@ export function CalendarGrid({ projects, viewMode, currentDate, scrollToToday }:
   const extendedDays = useMemo(() => getExtendedDays(currentDate), [currentDate]);
 
   const projectsByDate = useMemo(() => {
-    const grouped: Record<string, ContentProjectWithSummary[]> = {};
+    const grouped: Record<string, CalendarProject[]> = {};
 
     projects.forEach((project) => {
       if (project.scheduled_date) {

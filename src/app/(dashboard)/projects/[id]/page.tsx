@@ -23,7 +23,9 @@ import {
 } from "@/hooks/use-projects";
 import { useAssets, useCreateAsset } from "@/hooks/use-assets";
 import { usePublications } from "@/hooks/use-publications";
-import type { ProjectStatus, AssetType } from "@/lib/types";
+import type { ProjectStatus } from "@/lib/types";
+
+type AssetType = string;
 import {
   ArrowLeft,
   CalendarIcon,
@@ -195,8 +197,12 @@ export default function ProjectDetailPage({ params }: ProjectDetailPageProps) {
 
   const handleCreateAsset = async () => {
     if (!newAssetType || !project) return;
+    const label = ASSET_TYPES.find((t) => t.value === newAssetType)?.label ?? newAssetType;
+    const suffix = Math.random().toString(36).substring(2, 5);
     await createAsset.mutateAsync({
       project_id: project.id,
+      asset_id: `${project.project_id}_${newAssetType}_${suffix}`,
+      name: label,
       asset_type: newAssetType,
     });
     setNewAssetType("");
@@ -226,8 +232,8 @@ export default function ProjectDetailPage({ params }: ProjectDetailPageProps) {
     );
   }
 
-  const statusConfig = STATUS_CONFIG[project.status];
-  const currentStatusIndex = STATUS_ORDER.indexOf(project.status);
+  const statusConfig = STATUS_CONFIG[project.status as ProjectStatus];
+  const currentStatusIndex = STATUS_ORDER.indexOf(project.status as ProjectStatus);
 
   return (
     <div className="space-y-6">
@@ -532,7 +538,7 @@ export default function ProjectDetailPage({ params }: ProjectDetailPageProps) {
               </CardHeader>
               <CardContent>
                 <div className="flex flex-wrap gap-2">
-                  {project.target_platforms.map((platform) => {
+                  {project.target_platforms.map((platform: string) => {
                     const Icon =
                       PLATFORM_ICONS[platform.toLowerCase()] || FileText;
                     return (

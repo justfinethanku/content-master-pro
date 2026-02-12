@@ -13,8 +13,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { useProjectsWithSummary, useUpdateProject, type ProjectFilters } from "@/hooks/use-projects";
-import type { ContentProject, ContentProjectWithSummary, ProjectStatus } from "@/lib/types";
+import { useCalendarProjects, useUpdateProjectSchedule, type CalendarProject, type CalendarFilters } from "@/hooks/use-deliverables";
+import type { ProjectStatus } from "@/lib/types";
 import {
   ChevronLeft,
   ChevronRight,
@@ -77,7 +77,7 @@ export function CalendarView() {
   const [viewMode, setViewMode] = useState<ViewMode>(initialView);
   const [currentDate, setCurrentDate] = useState(initialDate);
   const [statusFilter, setStatusFilter] = useState<ProjectStatus | "all">(initialStatus);
-  const [activeProject, setActiveProject] = useState<ContentProjectWithSummary | null>(null);
+  const [activeProject, setActiveProject] = useState<CalendarProject | null>(null);
   const [scrollToTodayTrigger, setScrollToTodayTrigger] = useState(0);
 
   // Sync state to URL params (for back button support)
@@ -96,7 +96,7 @@ export function CalendarView() {
     updateUrlParams(currentDate, viewMode, statusFilter);
   }, [currentDate, viewMode, statusFilter, updateUrlParams]);
 
-  const updateProject = useUpdateProject();
+  const updateProject = useUpdateProjectSchedule();
 
   // Calculate date range for query
   const dateRange = useMemo(() => {
@@ -126,8 +126,8 @@ export function CalendarView() {
   }, [viewMode, currentDate]);
 
   // Build filters
-  const filters: ProjectFilters = useMemo(() => {
-    const f: ProjectFilters = {
+  const filters: CalendarFilters = useMemo(() => {
+    const f: CalendarFilters = {
       startDate: dateRange.startDate,
       endDate: dateRange.endDate,
     };
@@ -137,7 +137,7 @@ export function CalendarView() {
     return f;
   }, [dateRange, statusFilter]);
 
-  const { data: projects = [], isLoading } = useProjectsWithSummary(filters);
+  const { data: projects = [], isLoading } = useCalendarProjects(filters);
 
   // Navigation handlers
   const goToPrevious = () => {
@@ -171,7 +171,7 @@ export function CalendarView() {
   };
 
   // Drag and drop handlers
-  const handleDragStart = (event: { active: { data: { current?: { project?: ContentProjectWithSummary } } } }) => {
+  const handleDragStart = (event: { active: { data: { current?: { project?: CalendarProject } } } }) => {
     const project = event.active.data.current?.project;
     if (project) {
       setActiveProject(project);
@@ -184,7 +184,7 @@ export function CalendarView() {
 
     if (!over) return;
 
-    const projectData = active.data.current?.project as ContentProjectWithSummary | undefined;
+    const projectData = active.data.current?.project as CalendarProject | undefined;
     const targetDate = over.id as string;
 
     if (!projectData) return;
@@ -196,9 +196,9 @@ export function CalendarView() {
     try {
       await updateProject.mutateAsync({
         id: projectData.id,
-        updates: { scheduled_date: targetDate },
+        scheduled_date: targetDate,
       });
-      toast.success(`Moved "${projectData.title}" to ${new Date(targetDate).toLocaleDateString()}`);
+      toast.success(`Moved "${projectData.name}" to ${new Date(targetDate).toLocaleDateString()}`);
     } catch {
       toast.error("Failed to update project date");
     }
@@ -275,7 +275,7 @@ export function CalendarView() {
 
           {/* Quick Create */}
           <Button asChild>
-            <Link href="/projects/new">
+            <Link href="/deliverables/new">
               <Plus className="h-4 w-4 mr-1" />
               New Project
             </Link>

@@ -354,6 +354,102 @@ export function useCreatePromptKitAsset() {
   });
 }
 
+// Calendar-specific types and hooks
+
+export interface CalendarProject extends Project {
+  content_summary: string | null;
+}
+
+export interface CalendarFilters {
+  startDate: string;
+  endDate: string;
+  status?: ProjectStatus;
+}
+
+/**
+ * Fetch projects for calendar view with content summaries
+ */
+export function useCalendarProjects(filters: CalendarFilters) {
+  return useQuery({
+    queryKey: [...deliverableKeys.lists(), "calendar", filters] as const,
+    queryFn: async (): Promise<CalendarProject[]> => {
+      const supabase = createClient();
+
+      let query = supabase
+        .from("projects")
+        .select("*")
+        .gte("scheduled_date", filters.startDate)
+        .lte("scheduled_date", filters.endDate);
+
+      if (filters.status) {
+        query = query.eq("status", filters.status);
+      }
+
+      query = query.order("scheduled_date", { ascending: true });
+
+      const { data: projects, error } = await query;
+      if (error) throw error;
+      if (!projects || projects.length === 0) return [];
+
+      // Fetch first post asset content for each project (for summary)
+      const projectUuids = projects.map((p) => p.id);
+      const { data: assets } = await supabase
+        .from("project_assets")
+        .select("project_id, content")
+        .eq("asset_type", "post")
+        .in("project_id", projectUuids)
+        .order("created_at", { ascending: true });
+
+      // Build map: project_id -> first post content (truncated)
+      const summaryMap = new Map<string, string>();
+      if (assets) {
+        for (const asset of assets) {
+          if (!summaryMap.has(asset.project_id) && asset.content) {
+            summaryMap.set(asset.project_id, asset.content);
+          }
+        }
+      }
+
+      return projects.map((project) => ({
+        ...project,
+        content_summary: summaryMap.get(project.id) ?? null,
+      })) as CalendarProject[];
+    },
+  });
+}
+
+/**
+ * Update a project's scheduled_date (for drag-and-drop rescheduling)
+ */
+export function useUpdateProjectSchedule() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async ({
+      id,
+      scheduled_date,
+    }: {
+      id: string;
+      scheduled_date: string;
+    }): Promise<Project> => {
+      const supabase = createClient();
+
+      const { data, error } = await supabase
+        .from("projects")
+        .update({ scheduled_date })
+        .eq("id", id)
+        .select()
+        .single();
+
+      if (error) throw error;
+      return data as Project;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: deliverableKeys.lists() });
+    },
+  });
+}
+
 /**
  * Update a project's name
  */

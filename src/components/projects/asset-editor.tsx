@@ -18,7 +18,12 @@ import { createMarkdownPasteHandler } from "@/hooks/use-markdown-paste";
 import { Save, Loader2, Check, AlertCircle, Eye, Code, X } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import type { AssetVersion } from "@/lib/types";
+interface AssetVersion {
+  id: string;
+  version_number: number;
+  content: string | null;
+  created_at: string;
+}
 import {
   AlertDialog,
   AlertDialogAction,
@@ -265,7 +270,7 @@ function AssetEditorInner({
               <div>
                 <div className="flex items-center gap-2 mb-2">
                   <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
-                    Current (v{asset.current_version})
+                    Current (v{asset.version})
                   </span>
                 </div>
                 <div className="min-h-[300px] max-h-[400px] p-4 border border-border rounded-md bg-background overflow-auto">
@@ -417,12 +422,12 @@ function AssetEditorInner({
             <CardContent className="pt-4">
               <VersionHistory
                 assetId={assetId}
-                currentVersion={asset.current_version}
+                currentVersion={asset.version}
                 disabled={!canEdit}
                 viewingVersionId={viewingVersion?.id}
                 onView={(version) => setViewingVersion(version)}
                 onRestore={(version) => {
-                  setContent(version.content);
+                  setContent(version.content ?? "");
                   setHasUnsavedChanges(true);
                   setViewingVersion(null);
                 }}

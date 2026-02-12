@@ -2,11 +2,10 @@
 
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { createClient } from "@/lib/supabase/client";
-import type {
-  ProjectPublication,
-  ProjectPublicationInsert,
-  ProjectPublicationUpdate,
-} from "@/lib/types";
+// Legacy types for old nate_project_publications table
+type ProjectPublication = Record<string, any>; // eslint-disable-line @typescript-eslint/no-explicit-any
+type ProjectPublicationInsert = Record<string, any>; // eslint-disable-line @typescript-eslint/no-explicit-any
+type ProjectPublicationUpdate = Record<string, any>; // eslint-disable-line @typescript-eslint/no-explicit-any
 import { projectKeys } from "./use-projects";
 
 // Query key factory for publications

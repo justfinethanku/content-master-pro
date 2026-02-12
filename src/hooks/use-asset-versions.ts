@@ -2,7 +2,16 @@
 
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { createClient } from "@/lib/supabase/client";
-import type { AssetVersion, AssetVersionInsert } from "@/lib/types";
+interface AssetVersion {
+  id: string;
+  asset_id: string;
+  version_number: number;
+  content: string | null;
+  created_at: string;
+  created_by: string;
+}
+
+type AssetVersionInsert = Omit<AssetVersion, "id" | "created_at">;
 import { assetKeys } from "./use-assets";
 
 // Query key factory for asset versions

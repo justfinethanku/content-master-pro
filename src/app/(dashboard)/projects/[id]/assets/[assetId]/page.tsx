@@ -67,14 +67,14 @@ export default function AssetEditorPage({ params }: AssetEditorPageProps) {
         <div className="flex-1">
           <div className="flex items-center gap-2">
             <h1 className="text-xl font-bold text-foreground">
-              {asset.title || typeLabel}
+              {asset.name || typeLabel}
             </h1>
             <Badge variant="secondary" className={statusConfig.bgClass}>
               {statusConfig.label}
             </Badge>
           </div>
           <p className="text-sm text-muted-foreground mt-1">
-            {project.title} &middot; {typeLabel} &middot; Version {asset.current_version}
+            {project.name} &middot; {typeLabel} &middot; Version {asset.version}
           </p>
         </div>
       </div>

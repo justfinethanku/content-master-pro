@@ -3,7 +3,12 @@
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useAssetVersions, useRestoreVersion } from "@/hooks/use-asset-versions";
-import type { AssetVersion } from "@/lib/types";
+interface AssetVersion {
+  id: string;
+  version_number: number;
+  content: string | null;
+  created_at: string;
+}
 import { History, RotateCcw, Loader2, Check, Eye } from "lucide-react";
 
 interface VersionHistoryProps {

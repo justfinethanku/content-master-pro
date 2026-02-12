@@ -2,13 +2,14 @@
 
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { createClient } from "@/lib/supabase/client";
-import type {
-  ContentProject,
-  ContentProjectInsert,
-  ContentProjectUpdate,
-  ContentProjectWithSummary,
-  ProjectStatus,
-} from "@/lib/types";
+import type { ProjectStatus } from "@/lib/types";
+
+// Legacy types for old nate_content_projects table
+// These pages are deprecated but kept for backward compatibility
+type ContentProject = Record<string, any>; // eslint-disable-line @typescript-eslint/no-explicit-any
+type ContentProjectInsert = Record<string, any>; // eslint-disable-line @typescript-eslint/no-explicit-any
+type ContentProjectUpdate = Record<string, any>; // eslint-disable-line @typescript-eslint/no-explicit-any
+type ContentProjectWithSummary = ContentProject & { content_summary: string | null };
 
 // Query key factory for projects
 export const projectKeys = {

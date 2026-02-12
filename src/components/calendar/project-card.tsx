@@ -1,7 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import type { ContentProjectWithSummary, ProjectStatus } from "@/lib/types";
+import type { CalendarProject } from "@/hooks/use-deliverables";
+import type { ProjectStatus } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -15,6 +16,11 @@ const STATUS_CONFIG: Record<
     label: "Draft",
     dotClass: "bg-stone-400",
     textClass: "text-stone-500 dark:text-stone-500",
+  },
+  in_progress: {
+    label: "In Progress",
+    dotClass: "bg-blue-400",
+    textClass: "text-blue-600 dark:text-blue-500",
   },
   review: {
     label: "Review",
@@ -31,12 +37,26 @@ const STATUS_CONFIG: Record<
     dotClass: "bg-emerald-400",
     textClass: "text-emerald-600 dark:text-emerald-500",
   },
+  archived: {
+    label: "Archived",
+    dotClass: "bg-stone-300",
+    textClass: "text-stone-400 dark:text-stone-600",
+  },
 };
+
+// Parse a date string as local time (avoids UTC shift for date-only strings like "2025-02-15")
+function parseLocalDate(dateString: string): Date {
+  // If it's a bare date (no "T"), treat as local midnight
+  if (!dateString.includes("T")) {
+    return new Date(dateString + "T00:00:00");
+  }
+  return new Date(dateString);
+}
 
 // Format date for display
 function formatDate(dateString: string | null): string {
   if (!dateString) return "Unscheduled";
-  const date = new Date(dateString);
+  const date = parseLocalDate(dateString);
   return date.toLocaleDateString("en-US", {
     weekday: "short",
     month: "short",
@@ -46,7 +66,7 @@ function formatDate(dateString: string | null): string {
 
 // Format date for empty card
 function formatDateFull(dateString: string): string {
-  const date = new Date(dateString);
+  const date = parseLocalDate(dateString);
   return date.toLocaleDateString("en-US", {
     weekday: "long",
     month: "long",
@@ -65,7 +85,7 @@ function truncateWords(text: string | null | undefined, wordCount: number): stri
 }
 
 interface ProjectCardProps {
-  project: ContentProjectWithSummary;
+  project: CalendarProject;
   variant?: "compact" | "full";
   isToday?: boolean;
 }
@@ -79,7 +99,7 @@ export function ProjectCard({ project, variant = "compact", isToday = false }: P
     // Compact card for month view
     return (
       <Link
-        href={`/projects/${project.id}`}
+        href={`/deliverables/${project.id}`}
         className={cn(
           "block rounded-lg transition-all duration-200",
           "bg-amber-50/80 dark:bg-amber-950/30",
@@ -95,7 +115,7 @@ export function ProjectCard({ project, variant = "compact", isToday = false }: P
             aria-label={statusConfig.label}
           />
           <p className="text-xs font-medium text-stone-800 dark:text-stone-200 leading-tight">
-            {project.title}
+            {project.name}
           </p>
         </div>
       </Link>
@@ -105,7 +125,7 @@ export function ProjectCard({ project, variant = "compact", isToday = false }: P
   // Full card for gallery view - portrait, paper-like aspect ratio
   return (
     <Link
-      href={`/projects/${project.id}`}
+      href={`/deliverables/${project.id}`}
       className={cn(
         "flex flex-col h-full rounded-xl transition-all duration-200",
         "bg-amber-50/80 dark:bg-amber-950/30",
@@ -128,7 +148,7 @@ export function ProjectCard({ project, variant = "compact", isToday = false }: P
 
       {/* Title */}
       <h3 className="font-semibold text-stone-900 dark:text-stone-100 leading-snug mb-3 line-clamp-2">
-        {project.title}
+        {project.name}
       </h3>
 
       {/* Summary - white content box */}
@@ -198,7 +218,7 @@ export function EmptyDayCard({ date, isToday = false }: EmptyDayCardProps) {
               : "border-yellow-400 text-yellow-700 hover:bg-yellow-50 dark:border-yellow-600 dark:text-yellow-500 dark:hover:bg-yellow-950/30"
           )}
         >
-          <Link href={`/projects/new?date=${date}`}>
+          <Link href={`/deliverables/new?date=${date}`}>
             <Plus className="h-4 w-4 mr-1" />
             Add project
           </Link>

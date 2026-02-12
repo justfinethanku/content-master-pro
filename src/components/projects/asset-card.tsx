@@ -70,9 +70,21 @@ const STATUS_CONFIG: Record<AssetStatus, { label: string; bgClass: string }> = {
     label: "Ready",
     bgClass: "bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200",
   },
+  review: {
+    label: "Review",
+    bgClass: "bg-amber-100 text-amber-800 dark:bg-amber-900 dark:text-amber-200",
+  },
   final: {
     label: "Final",
     bgClass: "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200",
+  },
+  published: {
+    label: "Published",
+    bgClass: "bg-emerald-100 text-emerald-800 dark:bg-emerald-900 dark:text-emerald-200",
+  },
+  archived: {
+    label: "Archived",
+    bgClass: "bg-stone-100 text-stone-800 dark:bg-stone-800 dark:text-stone-300",
   },
 };
 
@@ -116,7 +128,7 @@ export function AssetCard({ asset, projectId, currentUserId }: AssetCardProps) {
             </div>
             <div>
               <p className="font-medium text-sm text-foreground">
-                {asset.title || typeLabel}
+                {asset.name || typeLabel}
               </p>
               <p className="text-xs text-muted-foreground">{typeLabel}</p>
             </div>
@@ -159,7 +171,7 @@ export function AssetCard({ asset, projectId, currentUserId }: AssetCardProps) {
 
         {/* Version info */}
         <p className="text-xs text-muted-foreground mb-3">
-          Version {asset.current_version}
+          Version {asset.version}
         </p>
 
         {/* Actions */}
@@ -171,10 +183,10 @@ export function AssetCard({ asset, projectId, currentUserId }: AssetCardProps) {
             </Link>
           </Button>
 
-          {asset.external_url && (
+          {asset.published_url && (
             <Button asChild size="sm" variant="ghost">
               <a
-                href={asset.external_url}
+                href={asset.published_url}
                 target="_blank"
                 rel="noopener noreferrer"
               >

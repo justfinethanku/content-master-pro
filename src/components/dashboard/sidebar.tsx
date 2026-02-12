@@ -14,6 +14,7 @@ import {
 } from "@/components/ui/tooltip";
 import {
   Brain,
+  Calendar,
   Package,
   PanelLeftClose,
   PanelLeftOpen,
@@ -21,6 +22,7 @@ import {
 
 const navigation = [
   { name: "Deliverables", href: "/deliverables", icon: Package },
+  { name: "Calendar", href: "/calendar", icon: Calendar },
 ];
 
 // Commented out during frontend rebuild — will re-enable as pages are rebuilt
