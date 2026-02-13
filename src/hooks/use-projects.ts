@@ -3,6 +3,7 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { createClient } from "@/lib/supabase/client";
 import type { ProjectStatus } from "@/lib/types";
+import { deliverableKeys } from "./use-deliverables";
 
 // Legacy types for old nate_content_projects table
 // These pages are deprecated but kept for backward compatibility
@@ -187,7 +188,7 @@ export function useUpdateProject() {
 }
 
 /**
- * Delete a project
+ * Delete a project (and all its assets via DB cascade)
  */
 export function useDeleteProject() {
   const queryClient = useQueryClient();
@@ -197,7 +198,7 @@ export function useDeleteProject() {
       const supabase = createClient();
 
       const { error } = await supabase
-        .from("nate_content_projects")
+        .from("projects")
         .delete()
         .eq("id", id);
 
@@ -205,6 +206,7 @@ export function useDeleteProject() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: projectKeys.lists() });
+      queryClient.invalidateQueries({ queryKey: deliverableKeys.all });
     },
   });
 }
