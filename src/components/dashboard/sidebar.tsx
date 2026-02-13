@@ -15,6 +15,7 @@ import {
 import {
   Brain,
   Calendar,
+  Map,
   Package,
   PanelLeftClose,
   PanelLeftOpen,
@@ -23,6 +24,7 @@ import {
 const navigation = [
   { name: "Calendar", href: "/calendar", icon: Calendar },
   { name: "Deliverables", href: "/deliverables", icon: Package },
+  { name: "Roadmap", href: "/roadmap", icon: Map },
 ];
 
 // Commented out during frontend rebuild — will re-enable as pages are rebuilt
