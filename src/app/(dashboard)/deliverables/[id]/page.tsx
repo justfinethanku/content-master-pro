@@ -3,10 +3,21 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
-import { useDeliverable, useUpdateProjectName } from "@/hooks/use-deliverables";
+import { useDeliverable, useUpdateProjectName, useDeleteProject } from "@/hooks/use-deliverables";
 import type { ProjectAsset } from "@/lib/types";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 import { cn } from "@/lib/utils";
 import PostMarkdown from "@/components/post-markdown";
 import {
@@ -16,6 +27,7 @@ import {
   FileText,
   Package,
   Pencil,
+  Trash2,
 } from "lucide-react";
 
 const STATUS_COLORS: Record<string, string> = {
@@ -210,6 +222,8 @@ export default function DeliverableDetailPage() {
   const id = params.id as string;
 
   const { data, isLoading, error } = useDeliverable(id);
+  const deleteProject = useDeleteProject();
+  const [deleting, setDeleting] = useState(false);
 
   if (isLoading) {
     return (
@@ -267,12 +281,48 @@ export default function DeliverableDetailPage() {
               <p className="text-muted-foreground">{subtitle}</p>
             )}
           </div>
-          <Badge
-            variant="secondary"
-            className={cn("shrink-0 self-start", STATUS_COLORS[project.status])}
-          >
-            {project.status.replace("_", " ")}
-          </Badge>
+          <div className="flex items-center gap-2 shrink-0 self-start">
+            <Badge
+              variant="secondary"
+              className={cn(STATUS_COLORS[project.status])}
+            >
+              {project.status.replace("_", " ")}
+            </Badge>
+            <AlertDialog>
+              <AlertDialogTrigger asChild>
+                <button
+                  className="inline-flex items-center justify-center p-1.5 text-muted-foreground hover:text-destructive transition rounded-md"
+                  title="Delete project"
+                >
+                  <Trash2 className="h-4 w-4" />
+                </button>
+              </AlertDialogTrigger>
+              <AlertDialogContent>
+                <AlertDialogHeader>
+                  <AlertDialogTitle>Delete this project?</AlertDialogTitle>
+                  <AlertDialogDescription>
+                    This will permanently delete <strong>{project.name}</strong> and all its assets and versions. This cannot be undone.
+                  </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                  <AlertDialogCancel>Cancel</AlertDialogCancel>
+                  <AlertDialogAction
+                    onClick={() => {
+                      setDeleting(true);
+                      deleteProject.mutate(project.id, {
+                        onSuccess: () => router.push("/deliverables"),
+                        onError: () => setDeleting(false),
+                      });
+                    }}
+                    disabled={deleting}
+                    className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                  >
+                    {deleting ? "Deleting..." : "Delete"}
+                  </AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
+          </div>
         </div>
 
         <div className="flex flex-wrap items-center gap-2 sm:gap-4 text-sm text-muted-foreground">

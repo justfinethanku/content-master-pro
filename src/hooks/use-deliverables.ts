@@ -527,6 +527,25 @@ export function useUnscheduledProjects() {
 }
 
 /**
+ * Delete a project (CASCADE handles assets + versions)
+ */
+export function useDeleteProject() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (id: string): Promise<void> => {
+      const supabase = createClient();
+
+      const { error } = await supabase.from("projects").delete().eq("id", id);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: deliverableKeys.all });
+    },
+  });
+}
+
+/**
  * Update a project's name
  */
 export function useUpdateProjectName() {

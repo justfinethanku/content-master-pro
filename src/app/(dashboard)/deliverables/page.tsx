@@ -35,7 +35,7 @@ const STATUS_COLORS: Record<ProjectStatus, string> = {
 
 export default function DeliverablesPage() {
   const [search, setSearch] = useState("");
-  const [statusFilter, setStatusFilter] = useState<string>("all");
+  const [statusFilter, setStatusFilter] = useState<string>("draft");
   const [sortBy, setSortBy] = useState<"date" | "name">("date");
 
   const filters: DeliverableFilters = {
