@@ -25,7 +25,7 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
-import { ArrowLeft, ChevronDown, ExternalLink, FileCode, Loader2, PanelRightClose, PanelRightOpen, Sparkles, Trash2 } from "lucide-react";
+import { ArrowLeft, ChevronDown, ExternalLink, FileCode, Loader2, PanelRightClose, PanelRightOpen, Plus, Sparkles, Trash2 } from "lucide-react";
 
 function formatRelativeTime(dateStr: string): string {
   const date = new Date(dateStr);
@@ -174,6 +174,8 @@ function AssetEditorInner({
   const [showVersionDropdown, setShowVersionDropdown] = useState(false);
   const [generatingPreamble, setGeneratingPreamble] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [showAddPkDialog, setShowAddPkDialog] = useState(false);
+  const [addPkContent, setAddPkContent] = useState("");
 
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
@@ -545,14 +547,68 @@ function AssetEditorInner({
                 <span>Open Prompt Kit</span>
               </Link>
             </>
-          ) : !isPromptKit && !converting && currentContent && !viewingVersionId && (
-            <button
-              onClick={handleConvert}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md bg-primary text-primary-foreground hover:bg-primary/90 transition min-h-[36px]"
-            >
-              <Sparkles className="h-3.5 w-3.5" />
-              <span>Convert to Prompt Kit</span>
-            </button>
+          ) : !isPromptKit && !converting && !viewingVersionId && (
+            <>
+              {currentContent && (
+                <button
+                  onClick={handleConvert}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md bg-primary text-primary-foreground hover:bg-primary/90 transition min-h-[36px]"
+                >
+                  <Sparkles className="h-3.5 w-3.5" />
+                  <span>Convert to Prompt Kit</span>
+                </button>
+              )}
+              <AlertDialog open={showAddPkDialog} onOpenChange={setShowAddPkDialog}>
+                <AlertDialogTrigger asChild>
+                  <button
+                    onClick={() => { setAddPkContent(""); setShowAddPkDialog(true); }}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md border border-border bg-card text-foreground hover:bg-muted transition min-h-[36px]"
+                  >
+                    <Plus className="h-3.5 w-3.5" />
+                    <span>Add Prompt Kit</span>
+                  </button>
+                </AlertDialogTrigger>
+                <AlertDialogContent className="max-w-2xl">
+                  <AlertDialogHeader>
+                    <AlertDialogTitle>Add prompt kit</AlertDialogTitle>
+                    <AlertDialogDescription>
+                      Paste your pre-written prompt kit content below.
+                    </AlertDialogDescription>
+                  </AlertDialogHeader>
+                  <textarea
+                    value={addPkContent}
+                    onChange={(e) => setAddPkContent(e.target.value)}
+                    className="w-full min-h-[240px] rounded-md border border-border bg-background p-3 text-sm font-mono text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring resize-y"
+                    placeholder="Paste prompt kit markdown here..."
+                    autoFocus
+                  />
+                  <AlertDialogFooter>
+                    <AlertDialogCancel>Cancel</AlertDialogCancel>
+                    <AlertDialogAction
+                      disabled={!addPkContent.trim() || createPromptKitAsset.isPending}
+                      onClick={() => {
+                        createPromptKitAsset.mutate(
+                          {
+                            projectId,
+                            name: `${asset.name} Prompt Kit`,
+                            content: addPkContent.trim(),
+                          },
+                          {
+                            onSuccess: () => {
+                              setShowAddPkDialog(false);
+                              showToast("Prompt kit added");
+                            },
+                            onError: () => showToast("Failed to save prompt kit"),
+                          }
+                        );
+                      }}
+                    >
+                      {createPromptKitAsset.isPending ? "Saving..." : "Save Prompt Kit"}
+                    </AlertDialogAction>
+                  </AlertDialogFooter>
+                </AlertDialogContent>
+              </AlertDialog>
+            </>
           )}
 
           {/* Delete button */}
