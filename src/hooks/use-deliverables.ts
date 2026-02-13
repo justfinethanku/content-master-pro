@@ -546,6 +546,45 @@ export function useDeleteProject() {
 }
 
 /**
+ * Update an asset's name
+ */
+export function useUpdateAssetName() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async ({
+      id,
+      name,
+      projectId,
+    }: {
+      id: string;
+      name: string;
+      projectId: string;
+    }): Promise<ProjectAsset> => {
+      const supabase = createClient();
+
+      const { data, error } = await supabase
+        .from("project_assets")
+        .update({ name })
+        .eq("id", id)
+        .select()
+        .single();
+
+      if (error) throw error;
+      return data as ProjectAsset;
+    },
+    onSuccess: (_data, variables) => {
+      queryClient.invalidateQueries({
+        queryKey: deliverableKeys.asset(variables.id),
+      });
+      queryClient.invalidateQueries({
+        queryKey: deliverableKeys.detail(variables.projectId),
+      });
+    },
+  });
+}
+
+/**
  * Update a project's name
  */
 export function useUpdateProjectName() {

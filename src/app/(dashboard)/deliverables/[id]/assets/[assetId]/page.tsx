@@ -1,10 +1,10 @@
 "use client";
 
-import { useState, useRef, useCallback } from "react";
+import { useState, useRef, useCallback, useEffect } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import TurndownService from "turndown";
-import { useDeliverableAsset, useProjectPromptKits, useCreatePromptKitAsset } from "@/hooks/use-deliverables";
+import { useDeliverableAsset, useProjectPromptKits, useCreatePromptKitAsset, useUpdateAssetName } from "@/hooks/use-deliverables";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { createClient } from "@/lib/supabase/client";
 import { deliverableKeys } from "@/hooks/use-deliverables";
@@ -25,7 +25,7 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
-import { ArrowLeft, ChevronDown, ExternalLink, FileCode, Loader2, PanelRightClose, PanelRightOpen, Plus, Sparkles, Trash2 } from "lucide-react";
+import { ArrowLeft, ChevronDown, ExternalLink, FileCode, Loader2, PanelRightClose, PanelRightOpen, Pencil, Plus, Sparkles, Trash2 } from "lucide-react";
 
 function formatRelativeTime(dateStr: string): string {
   const date = new Date(dateStr);
@@ -176,12 +176,23 @@ function AssetEditorInner({
   const [deleting, setDeleting] = useState(false);
   const [showAddPkDialog, setShowAddPkDialog] = useState(false);
   const [addPkContent, setAddPkContent] = useState("");
+  const [editingTitle, setEditingTitle] = useState(false);
+  const [titleValue, setTitleValue] = useState(asset.name);
+  const titleInputRef = useRef<HTMLInputElement>(null);
 
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const updateAssetName = useUpdateAssetName();
 
   const currentContent = asset.content || "";
   const meta = asset.metadata as Record<string, unknown>;
   const wordCount = meta?.word_count as number | undefined;
+
+  useEffect(() => {
+    if (editingTitle) {
+      titleInputRef.current?.focus();
+      titleInputRef.current?.select();
+    }
+  }, [editingTitle]);
 
   // Version history
   const { data: versions = [] } = useAssetVersions(asset.id);
@@ -216,6 +227,25 @@ function AssetEditorInner({
     setToast(msg);
     setTimeout(() => setToast(null), 2500);
   }, []);
+
+  const saveTitle = useCallback(() => {
+    const trimmed = titleValue.trim();
+    if (!trimmed || trimmed === asset.name) {
+      setEditingTitle(false);
+      setTitleValue(asset.name);
+      return;
+    }
+    updateAssetName.mutate(
+      { id: asset.id, name: trimmed, projectId },
+      {
+        onSuccess: () => {
+          setEditingTitle(false);
+          showToast("Title updated");
+        },
+        onError: () => showToast("Failed to update title"),
+      }
+    );
+  }, [titleValue, asset.name, asset.id, projectId, updateAssetName, showToast]);
 
   const handleConvert = useCallback(async () => {
     setConverting(true);
@@ -476,10 +506,33 @@ function AssetEditorInner({
           >
             <ArrowLeft className="h-5 w-5" />
           </Link>
-          <div>
-            <h1 className="text-xl font-semibold text-foreground">
-              {asset.name}
-            </h1>
+          <div className="min-w-0 flex-1">
+            {editingTitle ? (
+              <input
+                ref={titleInputRef}
+                value={titleValue}
+                onChange={(e) => setTitleValue(e.target.value)}
+                onBlur={saveTitle}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") saveTitle();
+                  if (e.key === "Escape") {
+                    setEditingTitle(false);
+                    setTitleValue(asset.name);
+                  }
+                }}
+                className="text-xl font-semibold text-foreground bg-transparent border-b-2 border-primary outline-none w-full"
+              />
+            ) : (
+              <button
+                onClick={() => setEditingTitle(true)}
+                className="group/title flex items-center gap-2 text-left"
+              >
+                <h1 className="text-xl font-semibold text-foreground truncate">
+                  {asset.name}
+                </h1>
+                <Pencil className="h-3.5 w-3.5 text-muted-foreground opacity-0 group-hover/title:opacity-100 transition-opacity shrink-0" />
+              </button>
+            )}
             <div className="flex items-center gap-2 mt-0.5">
               <span className="text-xs text-muted-foreground">
                 {asset.asset_type}
