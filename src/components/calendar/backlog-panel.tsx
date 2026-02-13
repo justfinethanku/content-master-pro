@@ -11,7 +11,7 @@ interface BacklogPanelProps {
 }
 
 export function BacklogPanel({ projects }: BacklogPanelProps) {
-  const [expanded, setExpanded] = useState(false);
+  const [expanded, setExpanded] = useState(true);
 
   if (projects.length === 0) return null;
 
