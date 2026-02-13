@@ -210,10 +210,13 @@ export function CalendarView() {
     if (currentScheduledDate === targetDate) return;
 
     try {
-      // Auto-set status to "scheduled" when moving a published project to a future date
+      // Auto-set status to "scheduled" when dragging to calendar
+      // - draft dragged to any day → scheduled
+      // - published dragged to a future date → scheduled
       const today = new Date().toISOString().split("T")[0];
       const autoStatus =
-        targetDate > today && projectData.status === "published"
+        projectData.status === "draft" ||
+        (targetDate > today && projectData.status === "published")
           ? ("scheduled" as const)
           : undefined;
 
