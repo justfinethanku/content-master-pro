@@ -442,12 +442,12 @@ export function useUpdateProjectSchedule() {
       status,
     }: {
       id: string;
-      scheduled_date: string;
+      scheduled_date: string | null;
       status?: ProjectStatus;
     }): Promise<Project> => {
       const supabase = createClient();
 
-      const payload: { scheduled_date: string; status?: ProjectStatus } = {
+      const payload: { scheduled_date: string | null; status?: ProjectStatus } = {
         scheduled_date,
       };
       if (status) {

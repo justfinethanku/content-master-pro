@@ -22,7 +22,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useCalendarProjects, useUnscheduledProjects, useUpdateProjectSchedule, type CalendarProject, type CalendarFilters } from "@/hooks/use-deliverables";
-import { BacklogPanel } from "./backlog-panel";
+import { BacklogPanel, BACKLOG_DROPPABLE_ID } from "./backlog-panel";
 import type { ProjectStatus } from "@/lib/types";
 import {
   ChevronLeft,
@@ -201,9 +201,27 @@ export function CalendarView() {
     if (!over) return;
 
     const projectData = active.data.current?.project as CalendarProject | undefined;
-    const targetDate = over.id as string;
-
     if (!projectData) return;
+
+    // Dropped on the backlog → unschedule
+    if (over.id === BACKLOG_DROPPABLE_ID) {
+      if (!projectData.scheduled_date) return; // Already unscheduled
+
+      try {
+        await updateProject.mutateAsync({
+          id: projectData.id,
+          scheduled_date: null,
+          status: "draft",
+        });
+        toast.success(`Moved "${projectData.name}" to backlog — status changed to draft`);
+      } catch {
+        toast.error("Failed to unschedule project");
+      }
+      return;
+    }
+
+    // Dropped on a calendar day
+    const targetDate = over.id as string;
 
     // Don't update if dropped on the same date
     const currentScheduledDate = projectData.scheduled_date?.split("T")[0];
@@ -328,13 +346,13 @@ export function CalendarView() {
         </div>
       ) : (
         <DndContext sensors={sensors} onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
-          <BacklogPanel projects={unscheduledProjects} />
           <CalendarGrid
             projects={projects}
             viewMode={viewMode}
             currentDate={currentDate}
             scrollToToday={scrollToTodayTrigger}
           />
+          <BacklogPanel projects={unscheduledProjects} />
           <DragOverlay>
             {activeProject ? (
               <div className="opacity-90 shadow-lg">
