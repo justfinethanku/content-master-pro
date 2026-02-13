@@ -34,7 +34,7 @@ export function useAssets(projectId: string | null) {
       const supabase = createClient();
 
       const { data, error } = await supabase
-        .from("nate_project_assets")
+        .from("project_assets")
         .select("*")
         .eq("project_id", projectId)
         .order("created_at", { ascending: true });
@@ -58,7 +58,7 @@ export function useAsset(id: string | null) {
       const supabase = createClient();
 
       const { data, error } = await supabase
-        .from("nate_project_assets")
+        .from("project_assets")
         .select("*")
         .eq("id", id)
         .single();
@@ -85,7 +85,7 @@ export function useCreateAsset() {
       const supabase = createClient();
 
       const { data, error } = await supabase
-        .from("nate_project_assets")
+        .from("project_assets")
         .insert(asset)
         .select()
         .single();
@@ -118,7 +118,7 @@ export function useUpdateAsset() {
       const supabase = createClient();
 
       const { data, error } = await supabase
-        .from("nate_project_assets")
+        .from("project_assets")
         .update(updates)
         .eq("id", id)
         .select()
@@ -152,7 +152,7 @@ export function useDeleteAsset() {
       const supabase = createClient();
 
       const { error } = await supabase
-        .from("nate_project_assets")
+        .from("project_assets")
         .delete()
         .eq("id", id);
 
@@ -215,7 +215,7 @@ export function useCheckLock(assetId: string | null) {
 
       // Get asset lock status
       const { data, error } = await supabase
-        .from("nate_project_assets")
+        .from("project_assets")
         .select("locked_by, locked_at")
         .eq("id", assetId)
         .single();
@@ -271,7 +271,7 @@ export function useAcquireLock() {
 
       // Check current lock status
       const { data: current } = await supabase
-        .from("nate_project_assets")
+        .from("project_assets")
         .select("locked_by, locked_at")
         .eq("id", assetId)
         .single();
@@ -288,7 +288,7 @@ export function useAcquireLock() {
 
       // Acquire or refresh lock
       const { error } = await supabase
-        .from("nate_project_assets")
+        .from("project_assets")
         .update({
           locked_by: user.id,
           locked_at: new Date().toISOString(),
@@ -323,7 +323,7 @@ export function useReleaseLock() {
 
       // Only release if we own the lock
       const { error } = await supabase
-        .from("nate_project_assets")
+        .from("project_assets")
         .update({
           locked_by: null,
           locked_at: null,
@@ -358,7 +358,7 @@ export function useRefreshLock() {
 
       // Only refresh if we own the lock
       const { error } = await supabase
-        .from("nate_project_assets")
+        .from("project_assets")
         .update({
           locked_at: new Date().toISOString(),
         })

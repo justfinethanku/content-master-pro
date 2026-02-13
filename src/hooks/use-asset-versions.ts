@@ -35,7 +35,7 @@ export function useAssetVersions(assetId: string | null) {
       const supabase = createClient();
 
       const { data, error } = await supabase
-        .from("nate_asset_versions")
+        .from("asset_versions")
         .select("*")
         .eq("asset_id", assetId)
         .order("version_number", { ascending: false });
@@ -59,7 +59,7 @@ export function useAssetVersion(id: string | null) {
       const supabase = createClient();
 
       const { data, error } = await supabase
-        .from("nate_asset_versions")
+        .from("asset_versions")
         .select("*")
         .eq("id", id)
         .single();
@@ -99,16 +99,16 @@ export function useCreateVersion() {
 
       // Get current version number
       const { data: asset } = await supabase
-        .from("nate_project_assets")
-        .select("current_version")
+        .from("project_assets")
+        .select("version")
         .eq("id", assetId)
         .single();
 
-      const nextVersion = (asset?.current_version || 0) + 1;
+      const nextVersion = (asset?.version || 0) + 1;
 
       // Create version
       const { data: version, error: versionError } = await supabase
-        .from("nate_asset_versions")
+        .from("asset_versions")
         .insert({
           asset_id: assetId,
           version_number: nextVersion,
@@ -120,11 +120,11 @@ export function useCreateVersion() {
 
       if (versionError) throw versionError;
 
-      // Update asset's current_version and content
+      // Update asset's version and content
       const { error: updateError } = await supabase
-        .from("nate_project_assets")
+        .from("project_assets")
         .update({
-          current_version: nextVersion,
+          version: nextVersion,
           content,
         })
         .eq("id", assetId);
@@ -163,7 +163,7 @@ export function useRestoreVersion() {
 
       // Get the version to restore
       const { data: oldVersion, error } = await supabase
-        .from("nate_asset_versions")
+        .from("asset_versions")
         .select("content")
         .eq("id", versionId)
         .single();
@@ -192,7 +192,7 @@ export function useLatestVersion(assetId: string | null) {
       const supabase = createClient();
 
       const { data, error } = await supabase
-        .from("nate_asset_versions")
+        .from("asset_versions")
         .select("*")
         .eq("asset_id", assetId)
         .order("version_number", { ascending: false })
@@ -223,12 +223,12 @@ export function useCompareVersions(versionId1: string | null, versionId2: string
 
       const [{ data: v1 }, { data: v2 }] = await Promise.all([
         supabase
-          .from("nate_asset_versions")
+          .from("asset_versions")
           .select("*")
           .eq("id", versionId1)
           .single(),
         supabase
-          .from("nate_asset_versions")
+          .from("asset_versions")
           .select("*")
           .eq("id", versionId2)
           .single(),
