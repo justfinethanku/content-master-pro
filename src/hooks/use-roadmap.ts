@@ -36,16 +36,27 @@ export function useRoadmapItems() {
       } = await supabase.auth.getUser();
       if (!user) throw new Error("Not authenticated");
 
-      // Fetch items with submitter profile
+      // Fetch items
       const { data: items, error } = await supabase
         .from("roadmap_items")
-        .select("*, profiles!roadmap_items_submitted_by_fkey(email, display_name)")
+        .select("*")
         .order("sort_order", { ascending: true });
 
       if (error) throw error;
       if (!items || items.length === 0) return [];
 
       const itemIds = items.map((i) => i.id);
+
+      // Fetch submitter profiles
+      const submitterIds = [...new Set(items.map((i) => i.submitted_by))];
+      const { data: profiles } = await supabase
+        .from("profiles")
+        .select("id, email, display_name")
+        .in("id", submitterIds);
+
+      const profileMap = new Map(
+        profiles?.map((p) => [p.id, { email: p.email, display_name: p.display_name }]) ?? []
+      );
 
       // Fetch vote counts
       const { data: voteCounts } = await supabase
@@ -84,6 +95,7 @@ export function useRoadmapItems() {
         vote_count: voteMap.get(item.id) || 0,
         comment_count: commentMap.get(item.id) || 0,
         user_has_voted: userVoteSet.has(item.id),
+        profiles: profileMap.get(item.submitted_by) ?? null,
       })) as RoadmapItemWithDetails[];
     },
   });
@@ -276,14 +288,30 @@ export function useRoadmapComments(itemId: string | null) {
 
       const supabase = createClient();
 
-      const { data, error } = await supabase
+      const { data: comments, error } = await supabase
         .from("roadmap_comments")
-        .select("*, profiles!roadmap_comments_user_id_fkey(email, display_name)")
+        .select("*")
         .eq("item_id", itemId)
         .order("created_at", { ascending: true });
 
       if (error) throw error;
-      return (data || []) as RoadmapCommentWithUser[];
+      if (!comments || comments.length === 0) return [];
+
+      // Fetch commenter profiles
+      const userIds = [...new Set(comments.map((c) => c.user_id))];
+      const { data: profiles } = await supabase
+        .from("profiles")
+        .select("id, email, display_name")
+        .in("id", userIds);
+
+      const profileMap = new Map(
+        profiles?.map((p) => [p.id, { email: p.email, display_name: p.display_name }]) ?? []
+      );
+
+      return comments.map((c) => ({
+        ...c,
+        profiles: profileMap.get(c.user_id) ?? null,
+      })) as RoadmapCommentWithUser[];
     },
     enabled: !!itemId,
   });
