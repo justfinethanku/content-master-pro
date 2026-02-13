@@ -1375,3 +1375,53 @@ export interface RoutingResult {
   youtube_version: YouTubeVersion;
   matched_rule: RoutingRule;
 }
+
+// Roadmap types
+export interface RoadmapItem {
+  id: string;
+  title: string;
+  description: string | null;
+  submitted_by: string;
+  sort_order: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export type RoadmapItemInsert = Pick<RoadmapItem, "title"> &
+  Partial<Pick<RoadmapItem, "description" | "submitted_by" | "sort_order">>;
+
+export type RoadmapItemUpdate = Partial<
+  Pick<RoadmapItem, "title" | "description" | "sort_order">
+>;
+
+export interface RoadmapComment {
+  id: string;
+  item_id: string;
+  user_id: string;
+  content: string;
+  created_at: string;
+}
+
+export type RoadmapCommentInsert = Pick<
+  RoadmapComment,
+  "item_id" | "content"
+> &
+  Partial<Pick<RoadmapComment, "user_id">>;
+
+export interface RoadmapVote {
+  id: string;
+  item_id: string;
+  user_id: string;
+  created_at: string;
+}
+
+export interface RoadmapCommentWithUser extends RoadmapComment {
+  profiles: { email: string | null; display_name: string | null } | null;
+}
+
+export interface RoadmapItemWithDetails extends RoadmapItem {
+  vote_count: number;
+  comment_count: number;
+  user_has_voted: boolean;
+  profiles: { email: string | null; display_name: string | null } | null;
+}
