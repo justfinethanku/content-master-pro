@@ -9,8 +9,8 @@ import type {
   AssetStatus,
   LockStatus,
 } from "@/lib/types";
-// projectKeys imported for potential future cross-invalidation
-// import { projectKeys } from "./use-projects";
+import { projectKeys } from "./use-projects";
+import { deliverableKeys } from "./use-deliverables";
 
 // Query key factory for assets
 export const assetKeys = {
@@ -137,7 +137,7 @@ export function useUpdateAsset() {
 }
 
 /**
- * Delete an asset
+ * Delete an asset. If it was the last asset in the project, also delete the project.
  */
 export function useDeleteAsset() {
   const queryClient = useQueryClient();
@@ -145,21 +145,48 @@ export function useDeleteAsset() {
   return useMutation({
     mutationFn: async ({
       id,
+      projectId,
     }: {
       id: string;
       projectId: string;
-    }): Promise<void> => {
+    }): Promise<{ projectDeleted: boolean }> => {
       const supabase = createClient();
 
+      // Delete the asset
       const { error } = await supabase
         .from("project_assets")
         .delete()
         .eq("id", id);
 
       if (error) throw error;
+
+      // Check if the project has any remaining assets
+      const { count, error: countError } = await supabase
+        .from("project_assets")
+        .select("id", { count: "exact", head: true })
+        .eq("project_id", projectId);
+
+      if (countError) throw countError;
+
+      // If no assets remain, delete the orphaned project
+      if (count === 0) {
+        const { error: deleteProjectError } = await supabase
+          .from("projects")
+          .delete()
+          .eq("id", projectId);
+
+        if (deleteProjectError) throw deleteProjectError;
+        return { projectDeleted: true };
+      }
+
+      return { projectDeleted: false };
     },
-    onSuccess: (_, { projectId }) => {
+    onSuccess: ({ projectDeleted }, { projectId }) => {
       queryClient.invalidateQueries({ queryKey: assetKeys.list(projectId) });
+      if (projectDeleted) {
+        queryClient.invalidateQueries({ queryKey: projectKeys.all });
+        queryClient.invalidateQueries({ queryKey: deliverableKeys.all });
+      }
     },
   });
 }

@@ -131,8 +131,35 @@ function DroppableDayMonth({ date, projects, inCurrentMonth }: DroppableDayMonth
 
 // Card item type for gallery - either a project or an empty day placeholder
 type GalleryItem =
-  | { type: "project"; project: CalendarProject; isToday: boolean }
+  | { type: "project"; project: CalendarProject; date: string; isToday: boolean }
   | { type: "empty"; date: string; isToday: boolean };
+
+// Droppable wrapper for card view items
+interface DroppableDayCardProps {
+  date: string;
+  isToday: boolean;
+  children: React.ReactNode;
+}
+
+function DroppableDayCard({ date, isToday: todayFlag, children }: DroppableDayCardProps) {
+  const { setNodeRef, isOver } = useDroppable({
+    id: date,
+    data: { date, type: "calendar-day" },
+  });
+
+  return (
+    <div
+      ref={setNodeRef}
+      className={cn(
+        "aspect-2/3 rounded-xl transition-shadow",
+        isOver && "ring-2 ring-yellow-400 shadow-lg shadow-yellow-200/30 dark:shadow-yellow-900/30",
+        todayFlag && isOver && "ring-yellow-500"
+      )}
+    >
+      {children}
+    </div>
+  );
+}
 
 // Gallery carousel for week view
 interface GalleryCarouselProps {
@@ -181,7 +208,7 @@ function GalleryCarousel({ projects, days, scrollToToday }: GalleryCarouselProps
           foundTodayIndex = items.length;
         }
         for (const project of dayProjects) {
-          items.push({ type: "project", project, isToday: dayIsToday });
+          items.push({ type: "project", project, date: dateKey, isToday: dayIsToday });
         }
       }
     }
@@ -251,13 +278,17 @@ function GalleryCarousel({ projects, days, scrollToToday }: GalleryCarouselProps
       <div className="px-8">
         <div className="grid grid-cols-3 gap-5">
           {visibleItems.map((item) => (
-            <div key={item.type === "project" ? item.project.id : `empty-${item.date}`} className="aspect-2/3">
+            <DroppableDayCard
+              key={item.type === "project" ? item.project.id : `empty-${item.date}`}
+              date={item.type === "project" ? item.date : item.date}
+              isToday={item.isToday}
+            >
               {item.type === "project" ? (
-                <ProjectCard project={item.project} variant="full" isToday={item.isToday} />
+                <DraggableProjectCard project={item.project} variant="full" />
               ) : (
                 <EmptyDayCard date={item.date} isToday={item.isToday} />
               )}
-            </div>
+            </DroppableDayCard>
           ))}
           {/* Fill empty slots to maintain grid */}
           {visibleItems.length < cardsPerPage &&
