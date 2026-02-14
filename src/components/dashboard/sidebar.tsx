@@ -19,12 +19,14 @@ import {
   Package,
   PanelLeftClose,
   PanelLeftOpen,
+  Plug,
 } from "lucide-react";
 
 const navigation = [
   { name: "Calendar", href: "/calendar", icon: Calendar },
   { name: "Deliverables", href: "/deliverables", icon: Package },
   { name: "Roadmap", href: "/roadmap", icon: Map },
+  { name: "MCP", href: "/mcp", icon: Plug },
 ];
 
 // Commented out during frontend rebuild — will re-enable as pages are rebuilt
