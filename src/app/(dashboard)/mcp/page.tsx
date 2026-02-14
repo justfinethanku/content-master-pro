@@ -1,8 +1,10 @@
 "use client";
 
-import { useState } from "react";
-import { Check, Copy, Terminal, Search, FolderPlus, MessageSquare, FileText, BookOpen, List, Globe } from "lucide-react";
+import { useState, useEffect } from "react";
+import { Check, Copy, Terminal, Search, FolderPlus, MessageSquare, FileText, BookOpen, List, Globe, Key, Settings } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { createClient } from "@/lib/supabase/client";
+import Link from "next/link";
 
 function CopyBlock({ code, label }: { code: string; label?: string }) {
   const [copied, setCopied] = useState(false);
@@ -47,20 +49,49 @@ function ToolCard({ icon: Icon, name, description }: { icon: React.ElementType; 
   );
 }
 
-const CLAUDE_DESKTOP_CONFIG = `{
-  "mcpServers": {
-    "content-master-pro": {
-      "url": "https://www.contentmasterpro.limited/api/mcp",
-      "headers": {
-        "Authorization": "Bearer YOUR_API_KEY_HERE"
-      }
-    }
-  }
-}`;
-
 export default function McpPage() {
+  const [isAdmin, setIsAdmin] = useState(false);
+
+  useEffect(() => {
+    async function checkAdmin() {
+      const supabase = createClient();
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+      if (!user) return;
+
+      const { data: profile } = await supabase
+        .from("profiles")
+        .select("role")
+        .eq("id", user.id)
+        .single();
+
+      if (profile?.role === "admin") setIsAdmin(true);
+    }
+    checkAdmin();
+  }, []);
+
   return (
     <div className="mx-auto max-w-3xl space-y-10 pb-16">
+      {/* Admin banner */}
+      {isAdmin && (
+        <div className="flex items-center justify-between rounded-lg border border-border bg-card p-4">
+          <div className="flex items-center gap-3">
+            <Key className="h-5 w-5 text-primary" />
+            <div>
+              <p className="font-medium text-foreground">Token management</p>
+              <p className="text-sm text-muted-foreground">Create, copy, and revoke MCP connector tokens</p>
+            </div>
+          </div>
+          <Link href="/mcp/tokens">
+            <Button variant="outline" size="sm">
+              <Settings className="mr-2 h-4 w-4" />
+              Manage tokens
+            </Button>
+          </Link>
+        </div>
+      )}
+
       {/* Header */}
       <div>
         <h1 className="text-2xl font-bold text-foreground">MCP server setup</h1>
@@ -78,7 +109,7 @@ export default function McpPage() {
         </div>
         <p className="text-sm text-muted-foreground">
           Content Master Pro exposes a remote MCP server over HTTPS. No cloning repos, no installing
-          dependencies, no building anything. Just add a URL and your API key to Claude Desktop.
+          dependencies, no building anything. Just paste a URL into Claude Desktop.
         </p>
       </section>
 
@@ -115,12 +146,16 @@ export default function McpPage() {
         <div className="space-y-3">
           <div className="flex items-center gap-2">
             <span className="flex h-6 w-6 items-center justify-center rounded-full bg-primary text-primary-foreground text-xs font-bold">1</span>
-            <h3 className="font-medium text-foreground">Get your API key</h3>
+            <h3 className="font-medium text-foreground">Get your connector URL</h3>
           </div>
           <p className="text-sm text-muted-foreground ml-8">
-            Ask Jon for your MCP API key. It starts with{" "}
-            <code className="rounded bg-muted px-1 py-0.5 text-xs">cmp__</code> and is tied to your
-            Content Master Pro user account (so projects you create are attributed to you).
+            Ask Jon for your personal connector URL. It looks like:
+          </p>
+          <div className="ml-8">
+            <CopyBlock code="https://www.contentmasterpro.limited/api/mcp/cmp__xxxxxxxx..." />
+          </div>
+          <p className="text-sm text-muted-foreground ml-8">
+            This URL has your API key baked in — treat it like a password.
           </p>
         </div>
 
@@ -131,19 +166,20 @@ export default function McpPage() {
             <h3 className="font-medium text-foreground">Add to Claude Desktop</h3>
           </div>
           <p className="text-sm text-muted-foreground ml-8">
-            Open your Claude Desktop config file and add the server block below.
-            Replace <code className="rounded bg-muted px-1 py-0.5 text-xs">YOUR_API_KEY_HERE</code> with
-            your API key from step 1.
+            In Claude Desktop, go to <strong>Settings</strong> &rarr; <strong>Connectors</strong> &rarr; <strong>Add custom connector</strong>.
           </p>
-          <div className="ml-8 space-y-2">
-            <CopyBlock
-              label="Mac: ~/Library/Application Support/Claude/claude_desktop_config.json"
-              code={CLAUDE_DESKTOP_CONFIG}
-            />
+          <div className="ml-8 space-y-2 rounded-lg border border-border bg-card p-4">
+            <div className="flex items-center gap-3">
+              <span className="text-sm font-medium text-muted-foreground w-16">Name:</span>
+              <code className="text-sm text-foreground">Content Master Pro</code>
+            </div>
+            <div className="flex items-center gap-3">
+              <span className="text-sm font-medium text-muted-foreground w-16">URL:</span>
+              <code className="text-sm text-foreground">paste your connector URL</code>
+            </div>
           </div>
           <p className="text-sm text-muted-foreground ml-8">
-            On Windows, the config file is at{" "}
-            <code className="rounded bg-muted px-1 py-0.5 text-xs">%APPDATA%\Claude\claude_desktop_config.json</code>.
+            Click <strong>Add</strong>. That&apos;s it — no JSON config files, no restart needed.
           </p>
         </div>
 
@@ -151,11 +187,12 @@ export default function McpPage() {
         <div className="space-y-3">
           <div className="flex items-center gap-2">
             <span className="flex h-6 w-6 items-center justify-center rounded-full bg-primary text-primary-foreground text-xs font-bold">3</span>
-            <h3 className="font-medium text-foreground">Restart Claude Desktop</h3>
+            <h3 className="font-medium text-foreground">Start using it</h3>
           </div>
           <p className="text-sm text-muted-foreground ml-8">
-            Fully quit and reopen Claude Desktop. You should see <strong>content-master-pro</strong> in the
-            MCP tools list (the hammer icon at the bottom of the chat input).
+            You should see <strong>content-master-pro</strong> in your MCP tools list
+            (the hammer icon at the bottom of the chat input). Try asking Claude something like
+            &ldquo;search my posts about prompting&rdquo;.
           </p>
         </div>
       </section>
@@ -193,15 +230,13 @@ export default function McpPage() {
         <div className="space-y-3 text-sm text-muted-foreground">
           <div>
             <strong className="text-foreground">Tools not showing up?</strong>{" "}
-            Make sure your Claude Desktop config has the correct URL and a valid API key.
-            Restart Claude Desktop after changing the config.
+            Make sure you pasted the full connector URL (it starts with{" "}
+            <code className="rounded bg-muted px-1 py-0.5 text-xs">https://</code> and
+            contains your token).
           </div>
           <div>
             <strong className="text-foreground">Getting &ldquo;Unauthorized&rdquo;?</strong>{" "}
-            Double-check your API key. It should start with{" "}
-            <code className="rounded bg-muted px-1 py-0.5 text-xs">cmp__</code>.
-            Make sure the <code className="rounded bg-muted px-1 py-0.5 text-xs">Authorization</code> header
-            has the <code className="rounded bg-muted px-1 py-0.5 text-xs">Bearer </code> prefix.
+            Your token may have been revoked. Ask Jon for a new connector URL.
           </div>
           <div>
             <strong className="text-foreground">Search returning no results?</strong>{" "}
