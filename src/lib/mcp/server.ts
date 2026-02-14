@@ -333,7 +333,7 @@ export function createMcpServer(
           platform: platform || null,
           variant: variant || null,
           status: "draft",
-          current_version: 1,
+          version: 1,
           metadata: {},
         })
         .select()
