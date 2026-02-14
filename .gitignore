@@ -61,3 +61,13 @@ next-env.d.ts
 # Local working directories
 /.ralph/
 /SCRAPBOOK/
+
+# Backup files from refactoring
+*.bak
+
+# Python cache
+__pycache__/
+
+# Claude agent skills and config
+.agents/
+.claude/
