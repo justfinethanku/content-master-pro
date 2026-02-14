@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Check, Copy, Terminal, Search, FolderPlus, MessageSquare, FileText, BookOpen, List } from "lucide-react";
+import { Check, Copy, Terminal, Search, FolderPlus, MessageSquare, FileText, BookOpen, List, Globe } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
 function CopyBlock({ code, label }: { code: string; label?: string }) {
@@ -50,12 +50,9 @@ function ToolCard({ icon: Icon, name, description }: { icon: React.ElementType; 
 const CLAUDE_DESKTOP_CONFIG = `{
   "mcpServers": {
     "content-master-pro": {
-      "command": "node",
-      "args": ["/Users/jonathanedwards/AUTOMATION/SubStack/content-master-pro/mcp-server/build/index.js"],
-      "env": {
-        "SUPABASE_URL": "https://uaiiskuioqirpcaliljh.supabase.co",
-        "SUPABASE_SERVICE_ROLE_KEY": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVhaWlza3Vpb3FpcnBjYWxpbGpoIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc2Njg2OTk5MCwiZXhwIjoyMDgyNDQ1OTkwfQ.3NHfdJDJPXXNOnhZ4cz_leY0rz4njBkIpPi9be66Kp8",
-        "NATE_USER_ID": "YOUR_USER_ID_HERE"
+      "url": "https://www.contentmasterpro.limited/api/mcp",
+      "headers": {
+        "Authorization": "Bearer YOUR_API_KEY_HERE"
       }
     }
   }
@@ -68,10 +65,22 @@ export default function McpPage() {
       <div>
         <h1 className="text-2xl font-bold text-foreground">MCP server setup</h1>
         <p className="mt-2 text-muted-foreground">
-          Connect Claude Desktop to Content Master Pro. Search posts, Slack messages, and prompt kits.
+          Connect Claude Desktop (or Claude.ai) to Content Master Pro. Search posts, Slack messages, and prompt kits.
           Create projects and add assets — all from inside Claude.
         </p>
       </div>
+
+      {/* How it works */}
+      <section className="space-y-3">
+        <div className="flex items-center gap-2">
+          <Globe className="h-5 w-5 text-primary" />
+          <h2 className="text-lg font-semibold text-foreground">How it works</h2>
+        </div>
+        <p className="text-sm text-muted-foreground">
+          Content Master Pro exposes a remote MCP server over HTTPS. No cloning repos, no installing
+          dependencies, no building anything. Just add a URL and your API key to Claude Desktop.
+        </p>
+      </section>
 
       {/* Available Tools */}
       <section className="space-y-4">
@@ -106,26 +115,25 @@ export default function McpPage() {
         <div className="space-y-3">
           <div className="flex items-center gap-2">
             <span className="flex h-6 w-6 items-center justify-center rounded-full bg-primary text-primary-foreground text-xs font-bold">1</span>
-            <h3 className="font-medium text-foreground">Build the MCP server</h3>
+            <h3 className="font-medium text-foreground">Get your API key</h3>
           </div>
           <p className="text-sm text-muted-foreground ml-8">
-            Clone the repo (or pull latest), then build the server:
+            Ask Jon for your MCP API key. It starts with{" "}
+            <code className="rounded bg-muted px-1 py-0.5 text-xs">cmp__</code> and is tied to your
+            Content Master Pro user account (so projects you create are attributed to you).
           </p>
-          <div className="ml-8">
-            <CopyBlock code={`cd content-master-pro/mcp-server\nnpm install\nnpm run build`} />
-          </div>
         </div>
 
         {/* Step 2 */}
         <div className="space-y-3">
           <div className="flex items-center gap-2">
             <span className="flex h-6 w-6 items-center justify-center rounded-full bg-primary text-primary-foreground text-xs font-bold">2</span>
-            <h3 className="font-medium text-foreground">Configure Claude Desktop</h3>
+            <h3 className="font-medium text-foreground">Add to Claude Desktop</h3>
           </div>
           <p className="text-sm text-muted-foreground ml-8">
             Open your Claude Desktop config file and add the server block below.
-            Replace <code className="rounded bg-muted px-1 py-0.5 text-xs">YOUR_USER_ID_HERE</code> with
-            your user ID from Content Master Pro (ask Jon if you don&apos;t know it).
+            Replace <code className="rounded bg-muted px-1 py-0.5 text-xs">YOUR_API_KEY_HERE</code> with
+            your API key from step 1.
           </p>
           <div className="ml-8 space-y-2">
             <CopyBlock
@@ -134,8 +142,8 @@ export default function McpPage() {
             />
           </div>
           <p className="text-sm text-muted-foreground ml-8">
-            On Windows, the config file is at <code className="rounded bg-muted px-1 py-0.5 text-xs">%APPDATA%\Claude\claude_desktop_config.json</code>.
-            Update the <code className="rounded bg-muted px-1 py-0.5 text-xs">args</code> path to match where you cloned the repo.
+            On Windows, the config file is at{" "}
+            <code className="rounded bg-muted px-1 py-0.5 text-xs">%APPDATA%\Claude\claude_desktop_config.json</code>.
           </p>
         </div>
 
@@ -185,25 +193,20 @@ export default function McpPage() {
         <div className="space-y-3 text-sm text-muted-foreground">
           <div>
             <strong className="text-foreground">Tools not showing up?</strong>{" "}
-            Make sure the <code className="rounded bg-muted px-1 py-0.5 text-xs">args</code> path
-            points to the built <code className="rounded bg-muted px-1 py-0.5 text-xs">build/index.js</code> file,
-            not the source <code className="rounded bg-muted px-1 py-0.5 text-xs">src/index.ts</code>. Run{" "}
-            <code className="rounded bg-muted px-1 py-0.5 text-xs">npm run build</code> if you haven&apos;t already.
+            Make sure your Claude Desktop config has the correct URL and a valid API key.
+            Restart Claude Desktop after changing the config.
+          </div>
+          <div>
+            <strong className="text-foreground">Getting &ldquo;Unauthorized&rdquo;?</strong>{" "}
+            Double-check your API key. It should start with{" "}
+            <code className="rounded bg-muted px-1 py-0.5 text-xs">cmp__</code>.
+            Make sure the <code className="rounded bg-muted px-1 py-0.5 text-xs">Authorization</code> header
+            has the <code className="rounded bg-muted px-1 py-0.5 text-xs">Bearer </code> prefix.
           </div>
           <div>
             <strong className="text-foreground">Search returning no results?</strong>{" "}
             The search uses keyword matching (ILIKE). Try shorter, more general terms.
             For example, &ldquo;prompt&rdquo; instead of &ldquo;prompting techniques for newsletters&rdquo;.
-          </div>
-          <div>
-            <strong className="text-foreground">Can&apos;t create projects?</strong>{" "}
-            The <code className="rounded bg-muted px-1 py-0.5 text-xs">NATE_USER_ID</code> env var must be
-            set to a valid user UUID. Ask Jon for yours.
-          </div>
-          <div>
-            <strong className="text-foreground">Need to test locally?</strong>{" "}
-            Run the inspector:{" "}
-            <code className="rounded bg-muted px-1 py-0.5 text-xs">npx @modelcontextprotocol/inspector node build/index.js</code>
           </div>
         </div>
       </section>
