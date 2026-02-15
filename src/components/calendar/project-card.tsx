@@ -106,7 +106,13 @@ interface ProjectCardProps {
 }
 
 export function ProjectCard({ project, variant = "compact", isToday = false }: ProjectCardProps) {
-  const statusConfig = STATUS_CONFIG[project.status];
+  // Treat past-date "scheduled" posts as "published"
+  const today = new Date().toISOString().split("T")[0];
+  const effectiveStatus: ProjectStatus =
+    project.status === "scheduled" && project.scheduled_date && project.scheduled_date < today
+      ? "published"
+      : project.status;
+  const statusConfig = STATUS_CONFIG[effectiveStatus];
   // Use content_summary from main post draft or outline (not notes)
   const summary = truncateWords(project.content_summary, 75);
 
