@@ -20,6 +20,7 @@ import {
 import { CSS } from "@dnd-kit/utilities";
 import {
   GripVertical,
+  ChevronDown,
   ChevronUp,
   MessageSquare,
   Plus,
@@ -27,6 +28,7 @@ import {
   Loader2,
   Send,
   Lightbulb,
+  Megaphone,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -388,6 +390,92 @@ function AddItemDialog() {
   );
 }
 
+// --------------- Changelog ---------------
+
+interface ChangelogEntry {
+  date: string;
+  title: string;
+  sections: { heading: string; body: string }[];
+}
+
+const CHANGELOG: ChangelogEntry[] = [
+  {
+    date: "Feb 15, 2026",
+    title: "Prompt kits go live + generation upgrades",
+    sections: [
+      {
+        heading: "promptkit.natebjones.com is live",
+        body: "Prompt kits now have a real home. When you generate a prompt kit from a post, it gets its own public URL at promptkit.natebjones.com \u2014 a clean, branded page that renders the full kit with collapsible code blocks and copy buttons. This is the link that goes in the newsletter preamble. No more Notion. No more sharing raw markdown. Readers click, they see the prompts, they copy them. Done.",
+      },
+      {
+        heading: "Prompt kit generation got smarter",
+        body: "Both \u201cConvert to Prompt Kit\u201d and \u201cRegenerate PK\u201d now ask you one question before generating: any preferences for the direction? A dialog pops up where you can steer things \u2014 \u201cfocus on beginners,\u201d \u201conly 2 prompts,\u201d \u201cmake one a mega-prompt,\u201d whatever. Or just hit Auto-generate and let it rip. The instructions are one-and-done \u2014 they shape that generation and disappear.",
+      },
+      {
+        heading: "Regenerate everything",
+        body: "Previously, once a preamble or prompt kit was generated, that was it \u2014 the buttons disappeared. Now the preamble button stays visible and switches to \u201cRegenerate Preamble.\u201d It strips the old preamble cleanly and replaces it with a fresh one. Prompt kits get a new \u201cRegenerate PK\u201d button that creates a new version so you can always roll back. Both go through the new direction dialog, so you can course-correct on regeneration too.",
+      },
+    ],
+  },
+];
+
+function ChangelogSection() {
+  const [expandedIndex, setExpandedIndex] = useState<number | null>(0);
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center gap-2">
+        <Megaphone className="h-5 w-5 text-muted-foreground" />
+        <h2 className="text-xl font-bold text-foreground">Changelog</h2>
+      </div>
+
+      <div className="space-y-3">
+        {CHANGELOG.map((entry, i) => {
+          const isExpanded = expandedIndex === i;
+          return (
+            <div
+              key={i}
+              className="rounded-lg border border-border bg-card overflow-hidden"
+            >
+              <button
+                onClick={() => setExpandedIndex(isExpanded ? null : i)}
+                className="w-full flex items-center justify-between px-4 py-3 text-left hover:bg-muted/50 transition-colors"
+              >
+                <div className="min-w-0">
+                  <p className="text-xs font-medium text-muted-foreground">
+                    {entry.date}
+                  </p>
+                  <h3 className="font-medium text-foreground">{entry.title}</h3>
+                </div>
+                <ChevronDown
+                  className={`h-4 w-4 text-muted-foreground shrink-0 ml-2 transition-transform ${
+                    isExpanded ? "rotate-180" : ""
+                  }`}
+                />
+              </button>
+
+              {isExpanded && (
+                <div className="px-4 pb-4 space-y-4 border-t border-border pt-3">
+                  {entry.sections.map((section, j) => (
+                    <div key={j}>
+                      <h4 className="text-sm font-semibold text-foreground mb-1">
+                        {section.heading}
+                      </h4>
+                      <p className="text-sm text-muted-foreground leading-relaxed">
+                        {section.body}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 // --------------- Main Page ---------------
 
 export default function RoadmapPage() {
@@ -505,6 +593,11 @@ export default function RoadmapPage() {
           </SortableContext>
         </DndContext>
       )}
+
+      {/* Changelog */}
+      <div className="border-t border-border pt-6">
+        <ChangelogSection />
+      </div>
     </div>
   );
 }
