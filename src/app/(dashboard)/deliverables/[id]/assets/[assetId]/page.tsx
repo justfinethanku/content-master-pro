@@ -176,6 +176,9 @@ function AssetEditorInner({
   const [deleting, setDeleting] = useState(false);
   const [showAddPkDialog, setShowAddPkDialog] = useState(false);
   const [addPkContent, setAddPkContent] = useState("");
+  const [showPkDirectionDialog, setShowPkDirectionDialog] = useState(false);
+  const [pkDirectionInput, setPkDirectionInput] = useState("");
+  const [pkDirectionMode, setPkDirectionMode] = useState<"create" | "regenerate">("create");
   const [editingTitle, setEditingTitle] = useState(false);
   const [titleValue, setTitleValue] = useState(asset.name);
   const titleInputRef = useRef<HTMLInputElement>(null);
@@ -247,14 +250,19 @@ function AssetEditorInner({
     );
   }, [titleValue, asset.name, asset.id, projectId, updateAssetName, showToast]);
 
-  const handleConvert = useCallback(async () => {
+  const handleConvert = useCallback(async (instructions?: string) => {
     setConverting(true);
     setShowPromptKit(true);
     resetGenerate();
 
+    const variables: Record<string, string> = { content: currentContent };
+    variables.user_instructions = instructions?.trim()
+      ? `## ADDITIONAL INSTRUCTIONS FROM THE USER\n\nThe user has provided specific direction for this prompt kit. Follow these instructions in addition to the rules above. Where they conflict, the user's instructions take priority:\n\n${instructions.trim()}`
+      : "";
+
     const result = await generate({
       prompt_slug: "prompt_kit_converter",
-      variables: { content: currentContent },
+      variables,
       stream: true,
     });
 
@@ -362,15 +370,20 @@ function AssetEditorInner({
   }, [currentContent, hasPreamble, promptKits, asset.id, asset.version, meta, projectId, generatePreamble, resetPreamble, queryClient, showToast]);
 
   // Regenerate an existing prompt kit
-  const handleRegeneratePromptKit = useCallback(async () => {
+  const handleRegeneratePromptKit = useCallback(async (instructions?: string) => {
     if (!promptKits.length) return;
     setConverting(true);
     setShowPromptKit(true);
     resetGenerate();
 
+    const variables: Record<string, string> = { content: currentContent };
+    variables.user_instructions = instructions?.trim()
+      ? `## ADDITIONAL INSTRUCTIONS FROM THE USER\n\nThe user has provided specific direction for this prompt kit. Follow these instructions in addition to the rules above. Where they conflict, the user's instructions take priority:\n\n${instructions.trim()}`
+      : "";
+
     const result = await generate({
       prompt_slug: "prompt_kit_converter",
-      variables: { content: currentContent },
+      variables,
       stream: true,
     });
 
@@ -648,7 +661,7 @@ function AssetEditorInner({
               </button>
               {!converting && !viewingVersionId && currentContent && (
                 <button
-                  onClick={handleRegeneratePromptKit}
+                  onClick={() => { setPkDirectionMode("regenerate"); setPkDirectionInput(""); setShowPkDirectionDialog(true); }}
                   className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md bg-primary/10 text-primary hover:bg-primary/20 transition min-h-[36px]"
                   title="Regenerate prompt kit from current post content"
                 >
@@ -669,7 +682,7 @@ function AssetEditorInner({
             <>
               {currentContent && (
                 <button
-                  onClick={handleConvert}
+                  onClick={() => { setPkDirectionMode("create"); setPkDirectionInput(""); setShowPkDirectionDialog(true); }}
                   className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md bg-primary text-primary-foreground hover:bg-primary/90 transition min-h-[36px]"
                 >
                   <Sparkles className="h-3.5 w-3.5" />
@@ -728,6 +741,50 @@ function AssetEditorInner({
               </AlertDialog>
             </>
           )}
+
+          {/* Prompt kit direction dialog */}
+          <AlertDialog open={showPkDirectionDialog} onOpenChange={setShowPkDirectionDialog}>
+            <AlertDialogContent className="max-w-lg">
+              <AlertDialogHeader>
+                <AlertDialogTitle>
+                  {pkDirectionMode === "create" ? "Generate prompt kit" : "Regenerate prompt kit"}
+                </AlertDialogTitle>
+                <AlertDialogDescription>
+                  Any preferences for the direction of the prompt kit? Leave blank to auto-generate.
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <textarea
+                value={pkDirectionInput}
+                onChange={(e) => setPkDirectionInput(e.target.value)}
+                className="w-full min-h-[100px] rounded-md border border-border bg-background p-3 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring resize-y"
+                placeholder="e.g., Focus prompts on beginners, keep it practical, only 2 prompts for this pack, make one a mega-prompt..."
+                autoFocus
+              />
+              <AlertDialogFooter>
+                <AlertDialogCancel>Cancel</AlertDialogCancel>
+                <AlertDialogAction
+                  className="border border-border bg-background text-foreground hover:bg-muted"
+                  onClick={() => {
+                    setShowPkDirectionDialog(false);
+                    if (pkDirectionMode === "create") handleConvert();
+                    else handleRegeneratePromptKit();
+                  }}
+                >
+                  Auto-generate
+                </AlertDialogAction>
+                <AlertDialogAction
+                  onClick={() => {
+                    setShowPkDirectionDialog(false);
+                    if (pkDirectionMode === "create") handleConvert(pkDirectionInput);
+                    else handleRegeneratePromptKit(pkDirectionInput);
+                  }}
+                  disabled={!pkDirectionInput.trim()}
+                >
+                  Generate with instructions
+                </AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
 
           {/* Delete button */}
           <AlertDialog>
@@ -972,7 +1029,7 @@ function AssetEditorInner({
                     {(generateError || preambleError)?.message}
                   </p>
                   <button
-                    onClick={generatingPreamble ? handleAddPreamble : handleConvert}
+                    onClick={() => generatingPreamble ? handleAddPreamble() : handleConvert()}
                     className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md bg-primary text-primary-foreground hover:bg-primary/90 transition"
                   >
                     <Sparkles className="h-3.5 w-3.5" />
