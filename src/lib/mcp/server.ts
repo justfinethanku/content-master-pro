@@ -37,7 +37,8 @@ You have tools to:
 - **Search Nate's newsletter archive** (411+ posts) to find cross-linking opportunities
 - **Search prompt kits** — reusable prompt templates stored as project assets
 - **Manage projects** — create projects, add assets (drafts, transcripts, descriptions, etc.), update and version assets
-- **Read full post content** and Slack threads for deep context
+- **Read full post content** (from Nate's archive) and Slack threads for deep context
+- **Get project details** — view a project and all its assets
 
 When the user first connects or asks what you can do, give a brief overview of these capabilities.
 
@@ -79,6 +80,7 @@ When the user revises content:
 ## Important details
 
 - All IDs are UUIDs. After creating a project or asset, save the returned "id" for subsequent calls.
+- **Projects and posts are different things.** Use get_project for project UUIDs (from list_projects). Use get_post for archived post UUIDs (from search_nate_posts).
 - Searches use ILIKE (case-insensitive keyword match). Keep search terms short — one or two words.
 - Slack messages include a "links" array with URLs and titles that were shared in the message.
 - When presenting search results, always include URLs so the user can click through.`,
@@ -132,8 +134,9 @@ When the user revises content:
     "get_post",
     {
       title: "Get Post by ID",
-      description: "Get the full content of a specific post by its ID.",
-      inputSchema: { id: z.string().uuid().describe("Post UUID") },
+      description:
+        "Get the full content of an imported/archived post (e.g. from Nate's newsletter) by its UUID. Use IDs from search_nate_posts results. NOT for projects — use get_project for those.",
+      inputSchema: { id: z.string().uuid().describe("Post UUID from search_nate_posts results") },
     },
     async ({ id }) => {
       const { data, error } = await supabase
@@ -142,9 +145,69 @@ When the user revises content:
         .eq("id", id)
         .single();
 
-      if (error)
-        return { content: [{ type: "text" as const, text: `Error: ${error.message}` }], isError: true };
+      if (error) {
+        // Check if the ID exists in projects instead
+        const { data: project } = await supabase
+          .from("projects")
+          .select("id, name")
+          .eq("id", id)
+          .maybeSingle();
+
+        if (project) {
+          return {
+            content: [
+              {
+                type: "text" as const,
+                text: `That ID belongs to a project ("${project.name}"), not an archived post. Use the get_project tool instead.`,
+              },
+            ],
+            isError: true,
+          };
+        }
+        return { content: [{ type: "text" as const, text: `Post not found: ${error.message}` }], isError: true };
+      }
       return { content: [{ type: "text" as const, text: JSON.stringify(data, null, 2) }] };
+    }
+  );
+
+  // ── get_project ─────────────────────────────────────────────────────────
+
+  server.registerTool(
+    "get_project",
+    {
+      title: "Get Project Details",
+      description:
+        "Get a project and all its assets by the project's UUID. Use IDs from list_projects results.",
+      inputSchema: { id: z.string().uuid().describe("Project UUID from list_projects results") },
+    },
+    async ({ id }) => {
+      const { data: project, error: projErr } = await supabase
+        .from("projects")
+        .select("*")
+        .eq("id", id)
+        .single();
+
+      if (projErr)
+        return { content: [{ type: "text" as const, text: `Project not found: ${projErr.message}` }], isError: true };
+
+      const { data: assets } = await supabase
+        .from("project_assets")
+        .select("id, asset_id, name, asset_type, platform, variant, status, version, content, created_at, updated_at")
+        .eq("project_id", id)
+        .order("created_at", { ascending: true });
+
+      const result = {
+        ...project,
+        assets: (assets || []).map((a) => ({
+          ...a,
+          content_preview: a.content
+            ? a.content.substring(0, 500) + (a.content.length > 500 ? "..." : "")
+            : null,
+          content: undefined,
+        })),
+        asset_count: (assets || []).length,
+      };
+      return { content: [{ type: "text" as const, text: JSON.stringify(result, null, 2) }] };
     }
   );
 
