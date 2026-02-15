@@ -94,6 +94,38 @@ export function registerSearchTools(server: McpServer) {
     }
   );
 
+  // ─── get_asset ───────────────────────────────────────────────────────────
+
+  server.registerTool(
+    "get_asset",
+    {
+      title: "Get Asset Content",
+      description:
+        "Get the full content of a project asset by its UUID. Use this to read the complete text of a post draft, prompt kit, transcript, or any other asset. Use asset UUIDs from get_project results.",
+      inputSchema: {
+        id: z.string().uuid().describe("Asset UUID (the 'id' field from get_project or add_asset results)"),
+      },
+    },
+    async ({ id }) => {
+      const { data, error } = await supabase
+        .from("project_assets")
+        .select("id, asset_id, name, asset_type, platform, variant, status, version, content, metadata, created_at, updated_at, project_id")
+        .eq("id", id)
+        .single();
+
+      if (error) {
+        return {
+          content: [{ type: "text" as const, text: `Asset not found: ${error.message}` }],
+          isError: true,
+        };
+      }
+
+      return {
+        content: [{ type: "text" as const, text: JSON.stringify(data, null, 2) }],
+      };
+    }
+  );
+
   // ─── search_prompt_kits ──────────────────────────────────────────────────
 
   server.registerTool(

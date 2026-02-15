@@ -38,7 +38,8 @@ You have tools to:
 - **Search prompt kits** — reusable prompt templates stored as project assets
 - **Manage projects** — create projects, add assets (drafts, transcripts, descriptions, etc.), update and version assets
 - **Read full post content** (from Nate's archive) and Slack threads for deep context
-- **Get project details** — view a project and all its assets
+- **Get project details** — view a project and all its assets (content previews)
+- **Get full asset content** — read the complete text of any asset (draft, prompt kit, transcript, etc.)
 - **Browse and create ideas** — search existing ideas and save new ones from your analysis
 
 When the user first connects or asks what you can do, give a brief overview of these capabilities.
@@ -90,6 +91,7 @@ When you spot a trend, content gap, or interesting angle during analysis:
 
 - All IDs are UUIDs. After creating a project or asset, save the returned "id" for subsequent calls.
 - **Projects and posts are different things.** Use get_project for project UUIDs (from list_projects). Use get_post for archived post UUIDs (from search_nate_posts).
+- **get_project returns content previews only (500 chars).** To read the full content of an asset, use get_asset with the asset's UUID from the get_project results.
 - Searches use ILIKE (case-insensitive keyword match). Keep search terms short — one or two words.
 - Slack messages include a "links" array with URLs and titles that were shared in the message.
 - When presenting search results, always include URLs so the user can click through.`,
@@ -217,6 +219,32 @@ When you spot a trend, content gap, or interesting angle during analysis:
         asset_count: (assets || []).length,
       };
       return { content: [{ type: "text" as const, text: JSON.stringify(result, null, 2) }] };
+    }
+  );
+
+  // ── get_asset ──────────────────────────────────────────────────────────
+
+  server.registerTool(
+    "get_asset",
+    {
+      title: "Get Asset Content",
+      description:
+        "Get the full content of a project asset by its UUID. Use this to read the complete text of a post draft, prompt kit, transcript, or any other asset. Use asset UUIDs from get_project results.",
+      inputSchema: {
+        id: z.string().uuid().describe("Asset UUID (the 'id' field from get_project or add_asset results)"),
+      },
+    },
+    async ({ id }) => {
+      const { data, error } = await supabase
+        .from("project_assets")
+        .select("id, asset_id, name, asset_type, platform, variant, status, version, content, metadata, created_at, updated_at, project_id")
+        .eq("id", id)
+        .single();
+
+      if (error)
+        return { content: [{ type: "text" as const, text: `Asset not found: ${error.message}` }], isError: true };
+
+      return { content: [{ type: "text" as const, text: JSON.stringify(data, null, 2) }] };
     }
   );
 
