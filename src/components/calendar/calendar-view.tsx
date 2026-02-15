@@ -80,7 +80,7 @@ export function CalendarView() {
 
   // Initialize state from URL params
   const initialDate = parseDateParam(searchParams.get("date")) || new Date();
-  const initialView = (searchParams.get("view") as ViewMode) || "week";
+  const initialView = (searchParams.get("view") as ViewMode) || "month";
   const initialStatus = (searchParams.get("status") as ProjectStatus | "all") || "all";
 
   const [viewMode, setViewMode] = useState<ViewMode>(initialView);
