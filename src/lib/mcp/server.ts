@@ -22,10 +22,68 @@ export function createMcpServer(
   supabase: AnySupabase,
   userId: string
 ): McpServer {
-  const server = new McpServer({
-    name: "content-master-pro",
-    version: "1.0.0",
-  });
+  const server = new McpServer(
+    {
+      name: "content-master-pro",
+      version: "1.0.0",
+    },
+    {
+      instructions: `You are connected to Content Master Pro — Jon's content creation platform for the "Limited Edition Jonathan" Substack and related newsletters.
+
+## What you can do
+
+You have tools to:
+- **Browse recent ideas** from the #content-ideas Slack channel (links, summaries, discussion threads)
+- **Search Nate's newsletter archive** (411+ posts) to find cross-linking opportunities
+- **Search prompt kits** — reusable prompt templates stored as project assets
+- **Manage projects** — create projects, add assets (drafts, transcripts, descriptions, etc.), update and version assets
+- **Read full post content** and Slack threads for deep context
+
+When the user first connects or asks what you can do, give a brief overview of these capabilities.
+
+## Idea discovery
+
+When the user asks about recent ideas, what's been shared, or what to write about next:
+1. Use search_slack_messages to find recent messages from #content-ideas. Default to the last few days unless the user specifies a longer range. Use broad search terms or search for common patterns.
+2. For each idea, present: the **link** that was shared (from the "links" array in results), a **one-sentence summary** of the idea, and a **brief take** on the angle or opportunity.
+3. If a message has replies (reply_count > 0), use get_slack_thread to pull in the discussion — there's often valuable context in the thread.
+4. Sort by recency. If there are many results, group them by theme.
+
+## Cross-linking with Nate's posts
+
+When the user is working on a draft or exploring a topic:
+1. Proactively use search_nate_posts with relevant keywords from the current topic.
+2. Surface 2-5 related posts from Nate's archive that the user could link to, with title, URL, and a brief note on how it connects.
+3. Do this without being asked — cross-linking is a core part of the workflow.
+
+Search uses ILIKE keyword matching, so use short terms: "prompt" not "prompting techniques for newsletters". Try multiple searches with different keywords to cast a wide net.
+
+## Creating a project
+
+The full flow for creating content:
+1. **create_project** — Give it a descriptive name. Returns a project with a UUID (the "id" field) and a human-readable project_id like "20260214_701".
+2. **add_asset** — Add one or more assets to the project. Use the project's UUID "id" (not "project_id") as the project_id parameter.
+   - Asset types: post, transcript, description, thumbnail, promptkit, guide
+   - Set platform when relevant: substack, youtube, tiktok, linkedin, twitter
+   - Set variant for multiple versions of the same type: "01", "02", "16x9", "9x16"
+   - Each asset starts at version 1 in "draft" status.
+
+## Updating and versioning assets
+
+When the user revises content:
+1. Use **update_asset** with the asset's UUID. Provide the new content and a brief change_description of what changed.
+2. The tool automatically increments the version number and saves a snapshot in version history.
+3. You can also update the asset's status: draft → ready → review → final → published.
+4. Always tell the user what version they're now on after an update.
+
+## Important details
+
+- All IDs are UUIDs. After creating a project or asset, save the returned "id" for subsequent calls.
+- Searches use ILIKE (case-insensitive keyword match). Keep search terms short — one or two words.
+- Slack messages include a "links" array with URLs and titles that were shared in the message.
+- When presenting search results, always include URLs so the user can click through.`,
+    },
+  );
 
   // ── search_nate_posts ──────────────────────────────────────────────────
 
@@ -342,6 +400,82 @@ export function createMcpServer(
       if (error)
         return { content: [{ type: "text" as const, text: `Error: ${error.message}` }], isError: true };
       return { content: [{ type: "text" as const, text: JSON.stringify(data, null, 2) }] };
+    }
+  );
+
+  // ── update_asset ────────────────────────────────────────────────────────
+
+  server.registerTool(
+    "update_asset",
+    {
+      title: "Update Asset",
+      description:
+        "Update an existing asset's content, name, or status. Automatically increments the version and saves a snapshot to version history.",
+      inputSchema: {
+        asset_id: z.string().uuid().describe("Asset UUID (the 'id' field from add_asset or list results)"),
+        content: z.string().optional().describe("New content (replaces existing)"),
+        name: z.string().optional().describe("New asset name/title"),
+        status: z
+          .enum(["draft", "ready", "review", "final", "published", "archived"])
+          .optional()
+          .describe("New status"),
+        change_description: z.string().optional().describe("Brief note on what changed (saved in version history)"),
+      },
+    },
+    async ({ asset_id, content, name, status, change_description }) => {
+      // Fetch current asset
+      const { data: current, error: fetchErr } = await supabase
+        .from("project_assets")
+        .select("id, name, content, version, status")
+        .eq("id", asset_id)
+        .single();
+
+      if (fetchErr || !current)
+        return { content: [{ type: "text" as const, text: `Asset ${asset_id} not found.` }], isError: true };
+
+      const newVersion = (current.version || 1) + 1;
+
+      // Build update payload (only include provided fields)
+      const updates: Record<string, unknown> = { version: newVersion };
+      if (content !== undefined) updates.content = content;
+      if (name !== undefined) updates.name = name;
+      if (status !== undefined) updates.status = status;
+
+      // Update the asset
+      const { data: updated, error: updateErr } = await supabase
+        .from("project_assets")
+        .update(updates)
+        .eq("id", asset_id)
+        .select()
+        .single();
+
+      if (updateErr)
+        return { content: [{ type: "text" as const, text: `Error updating asset: ${updateErr.message}` }], isError: true };
+
+      // Save version snapshot
+      const { error: versionErr } = await supabase
+        .from("asset_versions")
+        .insert({
+          asset_id,
+          version_number: newVersion,
+          name: updated.name,
+          content: updated.content,
+          metadata: updated.metadata || {},
+          change_description: change_description || null,
+          created_by: userId,
+        });
+
+      if (versionErr) {
+        // Non-fatal — the asset was updated, just the history entry failed
+        console.error("Failed to save version snapshot:", versionErr.message);
+      }
+
+      const result = {
+        ...updated,
+        _version_saved: !versionErr,
+        _change_description: change_description || null,
+      };
+      return { content: [{ type: "text" as const, text: JSON.stringify(result, null, 2) }] };
     }
   );
 
