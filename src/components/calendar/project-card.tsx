@@ -135,9 +135,23 @@ export function ProjectCard({ project, variant = "compact", isToday = false }: P
             className={cn("w-1.5 h-1.5 rounded-full shrink-0 mt-1", statusConfig.dotClass)}
             aria-label={statusConfig.label}
           />
-          <p className="text-xs font-medium text-stone-800 dark:text-stone-200 leading-tight">
-            {project.name}
-          </p>
+          <div className="min-w-0">
+            <p className="text-xs font-medium text-stone-800 dark:text-stone-200 leading-tight">
+              {project.name}
+            </p>
+            {project.asset_types.length > 0 && (
+              <div className="flex items-center gap-0.5 mt-0.5">
+                {project.asset_types.map((type) => (
+                  <span
+                    key={type}
+                    className="text-[8px] font-medium px-1 py-px rounded bg-stone-200/80 text-stone-500 dark:bg-stone-800 dark:text-stone-500 leading-none"
+                  >
+                    {ASSET_SHORT_LABELS[type] ?? type}
+                  </span>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
       </Link>
     );
