@@ -498,11 +498,11 @@ function AssetEditorInner({
   return (
     <div className="px-0 md:px-2 py-2 md:py-6">
       {/* Header */}
-      <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between mb-6">
-        <div className="flex items-center gap-4">
+      <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between mb-6">
+        <div className="flex items-start gap-4 min-w-0 flex-1">
           <Link
             href={`/deliverables/${projectId}`}
-            className="text-muted-foreground hover:text-foreground transition"
+            className="text-muted-foreground hover:text-foreground transition mt-1 shrink-0"
           >
             <ArrowLeft className="h-5 w-5" />
           </Link>
@@ -525,12 +525,12 @@ function AssetEditorInner({
             ) : (
               <button
                 onClick={() => setEditingTitle(true)}
-                className="group/title flex items-center gap-2 text-left"
+                className="group/title flex items-start gap-2 text-left min-w-0"
               >
-                <h1 className="text-xl font-semibold text-foreground truncate">
+                <h1 className="text-xl font-semibold text-foreground break-words">
                   {asset.name}
                 </h1>
-                <Pencil className="h-3.5 w-3.5 text-muted-foreground opacity-0 group-hover/title:opacity-100 transition-opacity shrink-0" />
+                <Pencil className="h-3.5 w-3.5 text-muted-foreground opacity-0 group-hover/title:opacity-100 transition-opacity shrink-0 mt-1.5" />
               </button>
             )}
             <div className="flex items-center gap-2 mt-0.5">
@@ -562,7 +562,7 @@ function AssetEditorInner({
         </div>
 
         {/* Actions */}
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2 shrink-0">
           {/* Preamble button — show when: has prompt kits, not a prompt kit, no preamble yet, has content */}
           {hasPromptKits && !isPromptKit && !hasPreamble && !generatingPreamble && currentContent && !viewingVersionId && (
             <button
