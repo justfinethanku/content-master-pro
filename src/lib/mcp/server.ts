@@ -39,6 +39,7 @@ You have tools to:
 - **Manage projects** — create projects, add assets (drafts, transcripts, descriptions, etc.), update and version assets
 - **Read full post content** (from Nate's archive) and Slack threads for deep context
 - **Get project details** — view a project and all its assets
+- **Browse and create ideas** — search existing ideas and save new ones from your analysis
 
 When the user first connects or asks what you can do, give a brief overview of these capabilities.
 
@@ -76,6 +77,14 @@ When the user revises content:
 2. The tool automatically increments the version number and saves a snapshot in version history.
 3. You can also update the asset's status: draft → ready → review → final → published.
 4. Always tell the user what version they're now on after an update.
+
+## Saving ideas
+
+When you spot a trend, content gap, or interesting angle during analysis:
+1. Use **list_ideas** first to check if a similar idea already exists.
+2. Use **create_idea** to save it. Include a clear summary, relevant topics, and potential angles.
+3. Ideas you create are automatically tagged as source_type "claude_analysis" so Jon can tell them apart from Slack-sourced ideas.
+4. Be generous with saving ideas — if something is worth mentioning, it's worth saving.
 
 ## Important details
 
@@ -539,6 +548,135 @@ When the user revises content:
         _change_description: change_description || null,
       };
       return { content: [{ type: "text" as const, text: JSON.stringify(result, null, 2) }] };
+    }
+  );
+
+  // ── list_ideas ──────────────────────────────────────────────────────────
+
+  server.registerTool(
+    "list_ideas",
+    {
+      title: "List Ideas",
+      description:
+        "Browse and search captured ideas. Search checks raw_content and summary. Filter by status or source.",
+      inputSchema: {
+        query: z.string().optional().describe("Search keywords (searches content and summary)"),
+        status: z
+          .enum(["backlog", "in_progress", "drafted", "archived"])
+          .optional()
+          .describe("Filter by status"),
+        source_type: z
+          .string()
+          .optional()
+          .describe("Filter by source: slack, manual, claude_analysis, etc."),
+        limit: z.number().min(1).max(50).default(20).describe("Max results"),
+      },
+    },
+    async ({ query, status, source_type, limit }) => {
+      let q = supabase
+        .from("slack_ideas")
+        .select(
+          "id, raw_content, source_type, source_url, summary, extracted_topics, idea_type, potential_angles, status, captured_at"
+        )
+        .order("captured_at", { ascending: false })
+        .limit(limit);
+
+      if (query) q = q.or(`raw_content.ilike.%${query}%,summary.ilike.%${query}%`);
+      if (status) q = q.eq("status", status);
+      if (source_type) q = q.eq("source_type", source_type);
+
+      const { data, error } = await q;
+
+      if (error)
+        return { content: [{ type: "text" as const, text: `Error: ${error.message}` }], isError: true };
+      if (!data?.length)
+        return { content: [{ type: "text" as const, text: "No ideas found matching those filters." }] };
+
+      const results = data.map((idea) => ({
+        id: idea.id,
+        summary: idea.summary,
+        raw_content:
+          idea.raw_content.substring(0, 300) + (idea.raw_content.length > 300 ? "..." : ""),
+        source_type: idea.source_type,
+        source_url: idea.source_url,
+        idea_type: idea.idea_type,
+        topics: idea.extracted_topics,
+        angles: idea.potential_angles,
+        status: idea.status,
+        captured_at: idea.captured_at,
+      }));
+      return { content: [{ type: "text" as const, text: JSON.stringify(results, null, 2) }] };
+    }
+  );
+
+  // ── create_idea ─────────────────────────────────────────────────────────
+
+  server.registerTool(
+    "create_idea",
+    {
+      title: "Create Idea",
+      description:
+        "Save a new content idea. Use this when you discover a trend, gap, or angle worth exploring. Automatically tagged as source_type 'claude_analysis'.",
+      inputSchema: {
+        raw_content: z.string().describe("The idea — what's the topic, angle, or observation?"),
+        summary: z.string().optional().describe("One-line summary of the idea"),
+        idea_type: z
+          .enum(["observation", "question", "concept", "reference", "todo"])
+          .optional()
+          .describe("Type of idea"),
+        extracted_topics: z
+          .array(z.string())
+          .optional()
+          .describe("Relevant topic tags (e.g. ['AI agents', 'productivity'])"),
+        potential_angles: z
+          .array(z.string())
+          .optional()
+          .describe("Possible angles or hooks for content"),
+        source_url: z.string().optional().describe("URL reference if the idea came from a specific source"),
+      },
+    },
+    async ({ raw_content, summary, idea_type, extracted_topics, potential_angles, source_url }) => {
+      const { data, error } = await supabase
+        .from("slack_ideas")
+        .insert({
+          user_id: userId,
+          raw_content,
+          source_type: "claude_analysis",
+          source_url: source_url || null,
+          summary: summary || null,
+          idea_type: idea_type || null,
+          extracted_topics: extracted_topics || [],
+          potential_angles: potential_angles || [],
+          status: "backlog",
+        })
+        .select()
+        .single();
+
+      if (error)
+        return { content: [{ type: "text" as const, text: `Error: ${error.message}` }], isError: true };
+
+      return {
+        content: [
+          {
+            type: "text" as const,
+            text: JSON.stringify(
+              {
+                id: data.id,
+                summary: data.summary,
+                raw_content: data.raw_content,
+                source_type: data.source_type,
+                idea_type: data.idea_type,
+                topics: data.extracted_topics,
+                angles: data.potential_angles,
+                status: data.status,
+                captured_at: data.captured_at,
+              },
+              null,
+              2
+            ),
+          },
+        ],
+      };
     }
   );
 
