@@ -16,7 +16,7 @@ interface CalendarGridProps {
   scrollToToday?: number; // Increment this to trigger scroll to today
 }
 
-// Get days in month grid (includes prev/next month padding)
+// Get days in month grid (always includes padding from prev/next month)
 function getMonthDays(date: Date): Date[] {
   const year = date.getFullYear();
   const month = date.getMonth();
@@ -24,11 +24,21 @@ function getMonthDays(date: Date): Date[] {
   const firstDay = new Date(year, month, 1);
   const lastDay = new Date(year, month + 1, 0);
 
+  // Start at the Sunday before (or on) the 1st
   const startDate = new Date(firstDay);
   startDate.setDate(startDate.getDate() - startDate.getDay());
+  // Always show at least a few days from the prior month
+  if (startDate.getTime() === firstDay.getTime()) {
+    startDate.setDate(startDate.getDate() - 7);
+  }
 
+  // End at the Saturday after (or on) the last day
   const endDate = new Date(lastDay);
   endDate.setDate(endDate.getDate() + (6 - endDate.getDay()));
+  // Always show at least a few days from the next month
+  if (endDate.getDate() === lastDay.getDate() && endDate.getMonth() === lastDay.getMonth()) {
+    endDate.setDate(endDate.getDate() + 7);
+  }
 
   const days: Date[] = [];
   const current = new Date(startDate);
