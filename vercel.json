@@ -7,6 +7,10 @@
     {
       "path": "/api/cron/ingest-changelogs",
       "schedule": "30 6 * * *"
+    },
+    {
+      "path": "/api/cron/link-substack",
+      "schedule": "0 7 * * *"
     }
   ]
 }

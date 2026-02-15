@@ -3,7 +3,7 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
-import { useDeliverable, useUpdateProjectName, useDeleteProject } from "@/hooks/use-deliverables";
+import { useDeliverable, useUpdateProjectName, useUpdateProjectUrl, useDeleteProject } from "@/hooks/use-deliverables";
 import type { ProjectAsset } from "@/lib/types";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -216,6 +216,125 @@ function InlineTitle({
   );
 }
 
+function InlineUrl({
+  url,
+  projectId,
+}: {
+  url: string | undefined;
+  projectId: string;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [editValue, setEditValue] = useState(url ?? "");
+  const [toast, setToast] = useState<string | null>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+  const updateUrl = useUpdateProjectUrl();
+
+  useEffect(() => {
+    if (editing) {
+      inputRef.current?.focus();
+      inputRef.current?.select();
+    }
+  }, [editing]);
+
+  function showToast(msg: string) {
+    setToast(msg);
+    setTimeout(() => setToast(null), 2500);
+  }
+
+  const save = useCallback(() => {
+    const trimmed = editValue.trim();
+    if (trimmed === (url ?? "")) {
+      setEditing(false);
+      return;
+    }
+    if (!trimmed) {
+      setEditing(false);
+      setEditValue(url ?? "");
+      return;
+    }
+    updateUrl.mutate(
+      { id: projectId, url: trimmed },
+      {
+        onSuccess: () => {
+          setEditing(false);
+          showToast("URL updated");
+        },
+        onError: () => showToast("Failed to update URL"),
+      }
+    );
+  }, [editValue, url, projectId, updateUrl]);
+
+  if (editing) {
+    return (
+      <>
+        <div className="flex items-center gap-1">
+          <ExternalLink className="h-4 w-4 text-muted-foreground shrink-0" />
+          <input
+            ref={inputRef}
+            value={editValue}
+            onChange={(e) => setEditValue(e.target.value)}
+            onBlur={save}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") save();
+              if (e.key === "Escape") {
+                setEditing(false);
+                setEditValue(url ?? "");
+              }
+            }}
+            placeholder="https://natesnewsletter.substack.com/p/..."
+            className="text-sm bg-transparent border-b border-primary outline-none w-full max-w-md text-foreground"
+          />
+        </div>
+        {toast && (
+          <div className="fixed bottom-4 right-4 sm:bottom-6 sm:right-6 bg-foreground text-background px-4 py-2 rounded-lg text-sm shadow-lg animate-in fade-in slide-in-from-bottom-2">
+            {toast}
+          </div>
+        )}
+      </>
+    );
+  }
+
+  if (url) {
+    return (
+      <>
+        <span className="group/url inline-flex items-center gap-1">
+          <a
+            href={url}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-1 text-primary hover:underline"
+          >
+            <ExternalLink className="h-4 w-4" />
+            View published
+          </a>
+          <button
+            onClick={() => { setEditValue(url ?? ""); setEditing(true); }}
+            className="p-0.5 text-muted-foreground opacity-0 group-hover/url:opacity-100 transition-opacity"
+            title="Edit URL"
+          >
+            <Pencil className="h-3 w-3" />
+          </button>
+        </span>
+        {toast && (
+          <div className="fixed bottom-6 right-6 bg-foreground text-background px-4 py-2 rounded-lg text-sm shadow-lg animate-in fade-in slide-in-from-bottom-2">
+            {toast}
+          </div>
+        )}
+      </>
+    );
+  }
+
+  return (
+    <button
+      onClick={() => { setEditValue(""); setEditing(true); }}
+      className="inline-flex items-center gap-1 text-muted-foreground hover:text-foreground transition-colors"
+    >
+      <Pencil className="h-3 w-3" />
+      <span className="text-xs">Add Substack URL</span>
+    </button>
+  );
+}
+
 export default function DeliverableDetailPage() {
   const params = useParams();
   const router = useRouter();
@@ -338,17 +457,7 @@ export default function DeliverableDetailPage() {
 
           {author && <span>by {author}</span>}
 
-          {publishedUrl && (
-            <a
-              href={publishedUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="inline-flex items-center gap-1 text-primary hover:underline"
-            >
-              <ExternalLink className="h-4 w-4" />
-              View published
-            </a>
-          )}
+          <InlineUrl url={publishedUrl} projectId={project.id} />
         </div>
 
         {tags && tags.length > 0 && (

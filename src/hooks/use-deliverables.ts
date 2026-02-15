@@ -585,6 +585,54 @@ export function useUpdateAssetName() {
 }
 
 /**
+ * Update a project's published URL (stored in metadata.url)
+ */
+export function useUpdateProjectUrl() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async ({
+      id,
+      url,
+    }: {
+      id: string;
+      url: string;
+    }): Promise<Project> => {
+      const supabase = createClient();
+
+      // Read current metadata so we merge, not overwrite
+      const { data: existing, error: fetchError } = await supabase
+        .from("projects")
+        .select("metadata")
+        .eq("id", id)
+        .single();
+
+      if (fetchError) throw fetchError;
+
+      const currentMeta =
+        (existing.metadata as Record<string, unknown>) || {};
+      const updatedMeta = { ...currentMeta, url };
+
+      const { data, error } = await supabase
+        .from("projects")
+        .update({ metadata: updatedMeta })
+        .eq("id", id)
+        .select()
+        .single();
+
+      if (error) throw error;
+      return data as Project;
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: deliverableKeys.lists() });
+      queryClient.invalidateQueries({
+        queryKey: deliverableKeys.detail(data.id),
+      });
+    },
+  });
+}
+
+/**
  * Update a project's name
  */
 export function useUpdateProjectName() {
