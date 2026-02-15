@@ -25,7 +25,7 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
-import { ArrowLeft, ChevronDown, ExternalLink, FileCode, Loader2, PanelRightClose, PanelRightOpen, Pencil, Plus, Sparkles, Trash2 } from "lucide-react";
+import { ArrowLeft, ChevronDown, ExternalLink, FileCode, Loader2, PanelRightClose, PanelRightOpen, Pencil, Plus, RefreshCw, Sparkles, Trash2 } from "lucide-react";
 
 function formatRelativeTime(dateStr: string): string {
   const date = new Date(dateStr);
@@ -298,15 +298,20 @@ function AssetEditorInner({
 
     const promptKitLink = `https://promptkit.natebjones.com/${promptKits[0].asset_id}`;
 
+    // Strip old preamble if regenerating (everything before first --- separator)
+    const bodyContent = hasPreamble && currentContent.includes("\n\n---\n\n")
+      ? currentContent.split("\n\n---\n\n").slice(1).join("\n\n---\n\n")
+      : currentContent;
+
     const result = await generatePreamble({
       prompt_slug: "post_preamble_generator",
-      variables: { content: currentContent, prompt_kit_link: promptKitLink },
+      variables: { content: bodyContent, prompt_kit_link: promptKitLink },
       stream: true,
     });
 
     if (result?.success && result.content) {
-      // Prepend preamble + separator + original content
-      const newContent = result.content.trim() + "\n\n---\n\n" + currentContent;
+      // Prepend preamble + separator + body content
+      const newContent = result.content.trim() + "\n\n---\n\n" + bodyContent;
       const nextVersion = asset.version + 1;
 
       const supabase = createClient();
@@ -354,7 +359,57 @@ function AssetEditorInner({
     } else {
       setGeneratingPreamble(false);
     }
-  }, [currentContent, promptKits, asset.id, asset.version, meta, projectId, generatePreamble, resetPreamble, queryClient, showToast]);
+  }, [currentContent, hasPreamble, promptKits, asset.id, asset.version, meta, projectId, generatePreamble, resetPreamble, queryClient, showToast]);
+
+  // Regenerate an existing prompt kit
+  const handleRegeneratePromptKit = useCallback(async () => {
+    if (!promptKits.length) return;
+    setConverting(true);
+    setShowPromptKit(true);
+    resetGenerate();
+
+    const result = await generate({
+      prompt_slug: "prompt_kit_converter",
+      variables: { content: currentContent },
+      stream: true,
+    });
+
+    if (result?.success && result.content) {
+      const pk = promptKits[0];
+      const nextVersion = pk.version + 1;
+      const supabase = createClient();
+      const { data: { user } } = await supabase.auth.getUser();
+
+      const { error: updateError } = await supabase
+        .from("project_assets")
+        .update({ content: result.content, version: nextVersion })
+        .eq("id", pk.id);
+
+      if (updateError) {
+        showToast("Failed to save prompt kit");
+        setConverting(false);
+        return;
+      }
+
+      if (user) {
+        await supabase.from("asset_versions").insert({
+          asset_id: pk.id,
+          version_number: nextVersion,
+          content: result.content,
+          created_by: user.id,
+        });
+      }
+
+      queryClient.invalidateQueries({ queryKey: deliverableKeys.detail(projectId) });
+      queryClient.invalidateQueries({ queryKey: [...deliverableKeys.detail(projectId), "prompt-kits"] });
+      queryClient.invalidateQueries({ queryKey: versionKeys.list(pk.id) });
+
+      setConverting(false);
+      showToast(`Prompt kit regenerated — saved as v${nextVersion}`);
+    } else {
+      setConverting(false);
+    }
+  }, [currentContent, promptKits, projectId, generate, resetGenerate, queryClient, showToast]);
 
   // Delete asset mutation
   const deleteMutation = useMutation({
@@ -563,14 +618,14 @@ function AssetEditorInner({
 
         {/* Actions */}
         <div className="flex flex-wrap items-center gap-2 shrink-0">
-          {/* Preamble button — show when: has prompt kits, not a prompt kit, no preamble yet, has content */}
-          {hasPromptKits && !isPromptKit && !hasPreamble && !generatingPreamble && currentContent && !viewingVersionId && (
+          {/* Preamble button */}
+          {hasPromptKits && !isPromptKit && !generatingPreamble && currentContent && !viewingVersionId && (
             <button
               onClick={handleAddPreamble}
               className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md bg-primary/10 text-primary hover:bg-primary/20 transition min-h-[36px]"
             >
-              <Sparkles className="h-3.5 w-3.5" />
-              <span>Add Preamble</span>
+              {hasPreamble ? <RefreshCw className="h-3.5 w-3.5" /> : <Sparkles className="h-3.5 w-3.5" />}
+              <span>{hasPreamble ? "Regenerate Preamble" : "Add Preamble"}</span>
             </button>
           )}
 
@@ -591,6 +646,16 @@ function AssetEditorInner({
                   {showPromptKit ? "Hide" : "Prompt Kit"}
                 </span>
               </button>
+              {!converting && !viewingVersionId && currentContent && (
+                <button
+                  onClick={handleRegeneratePromptKit}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md bg-primary/10 text-primary hover:bg-primary/20 transition min-h-[36px]"
+                  title="Regenerate prompt kit from current post content"
+                >
+                  <RefreshCw className="h-3.5 w-3.5" />
+                  <span>Regenerate PK</span>
+                </button>
+              )}
               <Link
                 href={`/deliverables/${projectId}/assets/${promptKits[0].id}`}
                 className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md border border-border bg-card text-foreground hover:bg-muted transition min-h-[36px]"
