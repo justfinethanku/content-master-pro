@@ -1,8 +1,9 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { Key, Settings, Terminal } from "lucide-react";
+import { Key, Settings, Terminal, ChevronDown } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { createClient } from "@/lib/supabase/client";
 import Link from "next/link";
 import Image from "next/image";
@@ -51,6 +52,7 @@ const SETUP_STEPS = [
 
 export default function McpPage() {
   const [isAdmin, setIsAdmin] = useState(false);
+  const [setupOpen, setSetupOpen] = useState(false);
 
   useEffect(() => {
     async function checkAdmin() {
@@ -135,61 +137,20 @@ export default function McpPage() {
         </div>
       </section>
 
-      {/* Before you start */}
-      <section className="space-y-3">
-        <h2 className="text-lg font-semibold text-foreground">Before you start</h2>
-        <p className="text-sm text-muted-foreground">
-          You need a <strong>connector URL</strong> from Jon. It looks something like:
-        </p>
-        <p className="rounded-lg bg-muted px-4 py-3 text-sm font-mono text-foreground break-all">
-          https://www.contentmasterpro.limited/api/mcp/cmp__xxxxxxxx...
-        </p>
-        <p className="text-sm text-muted-foreground">
-          This URL has your personal access key built in. Treat it like a password — don&apos;t share it with anyone else.
-        </p>
-      </section>
-
-      {/* Setup Steps */}
-      <section className="space-y-8">
-        <h2 className="text-lg font-semibold text-foreground">Setup (takes about 30 seconds)</h2>
-
-        {SETUP_STEPS.map((step, i) => (
-          <div key={step.title} className="space-y-3">
-            <div className="flex items-center gap-3">
-              <span className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground text-sm font-bold">
-                {i + 1}
-              </span>
-              <h3 className="font-medium text-foreground">{step.title}</h3>
-            </div>
-            <p className="text-sm text-muted-foreground ml-10">{step.description}</p>
-            <div className="ml-10 overflow-hidden rounded-lg border border-border">
-              <Image
-                src={step.image}
-                alt={step.title}
-                width={600}
-                height={400}
-                className="w-full h-auto"
-                unoptimized
-              />
-            </div>
-          </div>
-        ))}
-      </section>
-
       {/* Try it out */}
       <section className="space-y-4">
         <h2 className="text-lg font-semibold text-foreground">Try it out</h2>
         <p className="text-sm text-muted-foreground">
-          Once it&apos;s connected, just talk to Claude normally. Here are some things you can ask:
+          Once it&apos;s connected, just talk to Claude normally. Mention <strong>Content Master Pro</strong> so Claude knows to use the connector.
         </p>
         <div className="grid gap-2">
           {[
-            "What ideas have been shared in Slack this week?",
-            "Search for posts about prompting techniques",
-            "Find me related posts I can cross-link to",
-            "Create a new project for my next newsletter",
-            "Update the draft I just added — here's the new version",
-            "What are my current projects?",
+            "Use Content Master Pro to show me what ideas have been shared in Slack this week. Give me the links and summaries.",
+            "Search Content Master Pro for posts about prompting techniques. Show me the titles, dates, and a one-line summary of each.",
+            "I'm writing about AI agents. Use Content Master Pro to find related posts I can cross-link to.",
+            "Create a new project in Content Master Pro called 'Weekly Roundup'. Add a draft asset for the newsletter version.",
+            "Use Content Master Pro to update the draft I just added — here's the new version. Track what changed.",
+            "What are my current projects in Content Master Pro? Show me the status and latest assets for each.",
           ].map((example) => (
             <div
               key={example}
@@ -202,25 +163,80 @@ export default function McpPage() {
         </div>
       </section>
 
-      {/* Troubleshooting */}
-      <section className="space-y-4">
-        <h2 className="text-lg font-semibold text-foreground">Troubleshooting</h2>
-        <div className="space-y-3 text-sm text-muted-foreground">
-          <div>
-            <strong className="text-foreground">Not seeing the tools?</strong>{" "}
-            Make sure Content Master Pro is toggled on for your chat (step 7 above).
-          </div>
-          <div>
-            <strong className="text-foreground">Getting errors?</strong>{" "}
-            Your connector URL may have been revoked. Ask Jon for a new one.
-          </div>
-          <div>
-            <strong className="text-foreground">Search not finding what you expect?</strong>{" "}
-            Keep your search terms short — one or two words work best.
-            Try &ldquo;prompt&rdquo; instead of &ldquo;prompting techniques for newsletters&rdquo;.
-          </div>
-        </div>
-      </section>
+      {/* Installation — collapsible */}
+      <Collapsible open={setupOpen} onOpenChange={setSetupOpen}>
+        <CollapsibleTrigger asChild>
+          <button className="flex w-full items-center justify-between rounded-lg border border-border bg-card p-4 text-left transition-colors hover:bg-accent">
+            <div>
+              <h2 className="text-lg font-semibold text-foreground">Installation guide</h2>
+              <p className="text-sm text-muted-foreground">Takes about 30 seconds — just paste a URL into Claude</p>
+            </div>
+            <ChevronDown className={`h-5 w-5 text-muted-foreground transition-transform ${setupOpen ? "rotate-180" : ""}`} />
+          </button>
+        </CollapsibleTrigger>
+        <CollapsibleContent className="space-y-10 pt-6">
+          {/* Before you start */}
+          <section className="space-y-3">
+            <h3 className="text-base font-semibold text-foreground">Before you start</h3>
+            <p className="text-sm text-muted-foreground">
+              You need a <strong>connector URL</strong> from Jon. It looks something like:
+            </p>
+            <p className="rounded-lg bg-muted px-4 py-3 text-sm font-mono text-foreground break-all">
+              https://www.contentmasterpro.limited/api/mcp/cmp__xxxxxxxx...
+            </p>
+            <p className="text-sm text-muted-foreground">
+              This URL has your personal access key built in. Treat it like a password — don&apos;t share it with anyone else.
+            </p>
+          </section>
+
+          {/* Setup Steps */}
+          <section className="space-y-8">
+            <h3 className="text-base font-semibold text-foreground">Setup steps</h3>
+
+            {SETUP_STEPS.map((step, i) => (
+              <div key={step.title} className="space-y-3">
+                <div className="flex items-center gap-3">
+                  <span className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground text-sm font-bold">
+                    {i + 1}
+                  </span>
+                  <h4 className="font-medium text-foreground">{step.title}</h4>
+                </div>
+                <p className="text-sm text-muted-foreground ml-10">{step.description}</p>
+                <div className="ml-10 overflow-hidden rounded-lg border border-border">
+                  <Image
+                    src={step.image}
+                    alt={step.title}
+                    width={600}
+                    height={400}
+                    className="w-full h-auto"
+                    unoptimized
+                  />
+                </div>
+              </div>
+            ))}
+          </section>
+
+          {/* Troubleshooting */}
+          <section className="space-y-4">
+            <h3 className="text-base font-semibold text-foreground">Troubleshooting</h3>
+            <div className="space-y-3 text-sm text-muted-foreground">
+              <div>
+                <strong className="text-foreground">Not seeing the tools?</strong>{" "}
+                Make sure Content Master Pro is toggled on for your chat (step 7 above).
+              </div>
+              <div>
+                <strong className="text-foreground">Getting errors?</strong>{" "}
+                Your connector URL may have been revoked. Ask Jon for a new one.
+              </div>
+              <div>
+                <strong className="text-foreground">Search not finding what you expect?</strong>{" "}
+                Keep your search terms short — one or two words work best.
+                Try &ldquo;prompt&rdquo; instead of &ldquo;prompting techniques for newsletters&rdquo;.
+              </div>
+            </div>
+          </section>
+        </CollapsibleContent>
+      </Collapsible>
     </div>
   );
 }
