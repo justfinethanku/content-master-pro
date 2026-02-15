@@ -108,7 +108,7 @@ function DroppableDayMonth({ date, projects, inCurrentMonth }: DroppableDayMonth
         "min-h-25 p-1.5 border-r border-b border-stone-200 dark:border-stone-800 last:border-r-0",
         "overflow-hidden",
         !inCurrentMonth && "bg-stone-50/50 dark:bg-stone-900/30",
-        today && "bg-yellow-50/50 dark:bg-yellow-950/20",
+        today && "bg-yellow-50/50 dark:bg-yellow-950/20 ring-2 ring-inset ring-yellow-400 dark:ring-yellow-500",
         isOver && "ring-2 ring-yellow-400 ring-inset bg-yellow-50/80 dark:bg-yellow-950/40"
       )}
     >
