@@ -209,7 +209,7 @@ function AssetEditorInner({
   // Preamble detection
   const hasPreamble = !!(
     (meta?.preamble_added_at) ||
-    currentContent.includes("[Grab the prompts](https://promptkits.natebjones.com/")
+    currentContent.includes("[Grab the prompts](https://promptkit.natebjones.com/")
   );
 
   // AI generation for prompt kit conversion
@@ -296,7 +296,7 @@ function AssetEditorInner({
     setShowPromptKit(true);
     resetPreamble();
 
-    const promptKitLink = `https://promptkits.natebjones.com/${promptKits[0].asset_id}`;
+    const promptKitLink = `https://promptkit.natebjones.com/${promptKits[0].asset_id}`;
 
     const result = await generatePreamble({
       prompt_slug: "post_preamble_generator",
