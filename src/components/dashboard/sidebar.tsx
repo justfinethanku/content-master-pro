@@ -2,7 +2,7 @@
 
 import { useEffect } from "react";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useSearchParams } from "next/navigation";
 import { cn } from "@/lib/utils";
 import { useSidebar } from "@/contexts/sidebar-context";
 import { Button } from "@/components/ui/button";
@@ -15,6 +15,7 @@ import {
 import {
   Brain,
   Calendar,
+  Lightbulb,
   Map,
   Package,
   PanelLeftClose,
@@ -26,6 +27,7 @@ import {
 const navigation = [
   { name: "Calendar", href: "/calendar", icon: Calendar },
   { name: "Deliverables", href: "/deliverables", icon: Package },
+  { name: "Draft Ideas", href: "/deliverables?status=idea", icon: Lightbulb },
   { name: "Roadmap", href: "/roadmap", icon: Map },
   { name: "MCP", href: "/mcp", icon: Plug },
   { name: "Exec Circle", href: "/executive-mcp", icon: Users },
@@ -47,6 +49,7 @@ const navigation = [
 
 export function Sidebar() {
   const pathname = usePathname();
+  const searchParams = useSearchParams();
   const { isCollapsed, toggle, isMobileOpen, closeMobile } = useSidebar();
 
   // Auto-close mobile sidebar on navigation
@@ -56,8 +59,32 @@ export function Sidebar() {
 
   const renderNavItems = (items: typeof navigation, sectionKey: string, mobile?: boolean) => {
     return items.map((item) => {
-      const isActive =
-        pathname === item.href || pathname.startsWith(`${item.href}/`);
+      // Handle query param links (e.g., /deliverables?status=idea)
+      const [itemPath, itemQuery] = item.href.split("?");
+      let isActive: boolean;
+      if (itemQuery) {
+        // Query param link: active only when path matches AND query param matches
+        const params = new URLSearchParams(itemQuery);
+        isActive =
+          pathname === itemPath &&
+          Array.from(params.entries()).every(
+            ([key, value]) => searchParams.get(key) === value
+          );
+      } else {
+        // Regular link: active when exact match or subpath, but NOT if a query-param sibling is active
+        const hasQuerySibling = items.some((other) => {
+          if (!other.href.includes("?")) return false;
+          const [otherPath, otherQuery] = other.href.split("?");
+          if (otherPath !== itemPath) return false;
+          const params = new URLSearchParams(otherQuery);
+          return Array.from(params.entries()).every(
+            ([key, value]) => searchParams.get(key) === value
+          );
+        });
+        isActive =
+          !hasQuerySibling &&
+          (pathname === itemPath || pathname.startsWith(`${itemPath}/`));
+      }
 
       if (!mobile && isCollapsed) {
         return (

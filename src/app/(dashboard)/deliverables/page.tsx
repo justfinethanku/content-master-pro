@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { useDeliverables, type DeliverableFilters } from "@/hooks/use-deliverables";
 import type { ProjectStatus } from "@/lib/types";
 import { Input } from "@/components/ui/input";
@@ -25,6 +26,7 @@ import {
 } from "lucide-react";
 
 const STATUS_COLORS: Record<ProjectStatus, string> = {
+  idea: "bg-amber-500/15 text-amber-700 dark:text-amber-400",
   draft: "bg-muted text-muted-foreground",
   in_progress: "bg-blue-500/15 text-blue-700 dark:text-blue-400",
   review: "bg-yellow-500/15 text-yellow-700 dark:text-yellow-400",
@@ -34,8 +36,11 @@ const STATUS_COLORS: Record<ProjectStatus, string> = {
 };
 
 export default function DeliverablesPage() {
+  const searchParams = useSearchParams();
+  const initialStatus = searchParams.get("status") ?? "draft";
+
   const [search, setSearch] = useState("");
-  const [statusFilter, setStatusFilter] = useState<string>("draft");
+  const [statusFilter, setStatusFilter] = useState<string>(initialStatus);
   const [sortBy, setSortBy] = useState<"date" | "name">("date");
 
   const filters: DeliverableFilters = {
@@ -47,14 +52,18 @@ export default function DeliverablesPage() {
 
   const { data: projects, isLoading, error } = useDeliverables(filters);
 
+  const isIdeasView = statusFilter === "idea";
+
   return (
     <div className="space-y-6">
       {/* Header */}
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-foreground">Deliverables</h1>
+          <h1 className="text-2xl font-bold text-foreground">
+            {isIdeasView ? "Draft Ideas" : "Deliverables"}
+          </h1>
           <p className="text-sm text-muted-foreground">
-            {projects?.length ?? 0} projects
+            {projects?.length ?? 0} {isIdeasView ? "ideas" : "projects"}
           </p>
         </div>
         <Button asChild className="w-full sm:w-auto">
@@ -83,6 +92,7 @@ export default function DeliverablesPage() {
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="all">All statuses</SelectItem>
+            <SelectItem value="idea">Idea</SelectItem>
             <SelectItem value="draft">Draft</SelectItem>
             <SelectItem value="in_progress">In progress</SelectItem>
             <SelectItem value="review">Review</SelectItem>
@@ -119,7 +129,7 @@ export default function DeliverablesPage() {
       {!isLoading && !error && projects?.length === 0 && (
         <div className="flex flex-col items-center justify-center py-12 text-muted-foreground">
           <Package className="mb-3 h-10 w-10" />
-          <p>No projects found</p>
+          <p>No {isIdeasView ? "ideas" : "projects"} found</p>
         </div>
       )}
 

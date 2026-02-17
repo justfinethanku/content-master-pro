@@ -380,7 +380,8 @@ export function useCalendarProjects(filters: CalendarFilters) {
         .from("projects")
         .select("*")
         .gte("scheduled_date", filters.startDate)
-        .lte("scheduled_date", filters.endDate);
+        .lte("scheduled_date", filters.endDate)
+        .neq("status", "idea");
 
       if (filters.status) {
         query = query.eq("status", filters.status);
@@ -483,6 +484,7 @@ export function useUnscheduledProjects() {
         .from("projects")
         .select("*")
         .is("scheduled_date", null)
+        .neq("status", "idea")
         .order("created_at", { ascending: false })
         .limit(50);
 
@@ -651,6 +653,41 @@ export function useUpdateProjectName() {
       const { data, error } = await supabase
         .from("projects")
         .update({ name })
+        .eq("id", id)
+        .select()
+        .single();
+
+      if (error) throw error;
+      return data as Project;
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: deliverableKeys.lists() });
+      queryClient.invalidateQueries({
+        queryKey: deliverableKeys.detail(data.id),
+      });
+    },
+  });
+}
+
+/**
+ * Update a project's status
+ */
+export function useUpdateProjectStatus() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async ({
+      id,
+      status,
+    }: {
+      id: string;
+      status: ProjectStatus;
+    }): Promise<Project> => {
+      const supabase = createClient();
+
+      const { data, error } = await supabase
+        .from("projects")
+        .update({ status })
         .eq("id", id)
         .select()
         .single();

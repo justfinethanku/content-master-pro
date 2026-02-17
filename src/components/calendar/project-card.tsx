@@ -12,6 +12,11 @@ const STATUS_CONFIG: Record<
   ProjectStatus,
   { label: string; dotClass: string; textClass: string }
 > = {
+  idea: {
+    label: "Idea",
+    dotClass: "bg-amber-400",
+    textClass: "text-amber-600 dark:text-amber-500",
+  },
   draft: {
     label: "Draft",
     dotClass: "bg-stone-400",

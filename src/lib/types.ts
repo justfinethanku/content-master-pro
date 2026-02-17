@@ -646,6 +646,7 @@ export interface IdeaVectorMetadata {
 
 // Project status workflow
 export type ProjectStatus =
+  | "idea"
   | "draft"
   | "in_progress"
   | "review"
