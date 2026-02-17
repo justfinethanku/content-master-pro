@@ -99,7 +99,7 @@ function PromptKitPanel({
   return (
     <div className="border border-border rounded-lg overflow-hidden bg-card flex flex-col min-h-[40vh] lg:h-[calc(100vh-12rem)] lg:flex-1 lg:min-w-0">
       {/* Panel header */}
-      <div className="flex items-center justify-between px-4 py-2 border-b border-border bg-muted/30 flex-shrink-0">
+      <div className="flex items-center justify-between px-4 py-2 border-b border-border bg-muted/30 shrink-0">
         <div className="flex items-center gap-2 min-w-0">
           <FileCode className="h-4 w-4 shrink-0 text-muted-foreground" />
           <span className="text-sm font-medium text-foreground truncate">
@@ -119,7 +119,7 @@ function PromptKitPanel({
 
       {/* Tab bar for multiple prompt kits */}
       {promptKits.length > 1 && (
-        <div className="flex border-b border-border bg-muted/20 overflow-x-auto flex-shrink-0">
+        <div className="flex border-b border-border bg-muted/20 overflow-x-auto shrink-0">
           {promptKits.map((kit, i) => (
             <button
               key={kit.id}
@@ -566,7 +566,7 @@ function AssetEditorInner({
   return (
     <div className="px-0 md:px-2 py-2 md:py-6">
       {/* Header */}
-      <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between mb-6">
+      <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between mb-4 sm:mb-6">
         <div className="flex items-start gap-4 min-w-0 flex-1">
           <Link
             href={`/deliverables/${projectId}`}
@@ -595,7 +595,7 @@ function AssetEditorInner({
                 onClick={() => setEditingTitle(true)}
                 className="group/title flex items-start gap-2 text-left min-w-0"
               >
-                <h1 className="text-xl font-semibold text-foreground break-words">
+                <h1 className="text-lg sm:text-xl font-semibold text-foreground wrap-break-word">
                   {asset.name}
                 </h1>
                 <Pencil className="h-3.5 w-3.5 text-muted-foreground opacity-0 group-hover/title:opacity-100 transition-opacity shrink-0 mt-1.5" />
@@ -834,7 +834,7 @@ function AssetEditorInner({
         {/* Main content panel */}
         <div className={`border border-border rounded-lg overflow-hidden bg-card flex flex-col min-h-[50vh] md:h-[calc(100vh-12rem)] ${(showPromptKit && hasPromptKits) || converting || generatingPreamble ? "lg:flex-1 lg:min-w-0" : "w-full"}`}>
           {/* Panel header */}
-          <div className="flex items-center justify-between px-4 py-2 border-b border-border bg-muted/30 flex-shrink-0">
+          <div className="flex items-center justify-between px-4 py-2 border-b border-border bg-muted/30 shrink-0">
             <div className="flex items-center gap-3">
               <span className="text-sm font-medium text-foreground">
                 Content
@@ -997,7 +997,7 @@ function AssetEditorInner({
         {/* Converting / Preamble panel — shown during AI generation */}
         {(converting || generatingPreamble) && (
           <div className="border border-border rounded-lg overflow-hidden bg-card flex flex-col min-h-[40vh] lg:h-[calc(100vh-12rem)] lg:flex-1 lg:min-w-0">
-            <div className="flex items-center justify-between px-4 py-2 border-b border-border bg-muted/30 flex-shrink-0">
+            <div className="flex items-center justify-between px-4 py-2 border-b border-border bg-muted/30 shrink-0">
               <div className="flex items-center gap-2 min-w-0">
                 <Sparkles className="h-4 w-4 shrink-0 text-primary" />
                 <span className="text-sm font-medium text-foreground">
