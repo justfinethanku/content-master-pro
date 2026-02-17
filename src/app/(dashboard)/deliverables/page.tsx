@@ -139,14 +139,14 @@ export default function DeliverablesPage() {
               >
                 {/* Left: content */}
                 <div className="flex-1 min-w-0 space-y-1">
-                  <div className="flex items-center gap-2">
-                    <h3 className="font-medium text-foreground truncate group-hover:text-primary transition-colors">
+                  <div className="flex items-start gap-2">
+                    <h3 className="font-medium text-foreground line-clamp-2 wrap-break-word group-hover:text-primary transition-colors">
                       {project.name}
                     </h3>
                     <Badge
                       variant="secondary"
                       className={cn(
-                        "shrink-0 text-xs",
+                        "shrink-0 text-xs mt-0.5",
                         STATUS_COLORS[project.status]
                       )}
                     >

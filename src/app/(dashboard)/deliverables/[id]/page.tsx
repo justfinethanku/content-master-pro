@@ -53,7 +53,7 @@ function AssetCard({
 
   const isClickable = asset.content !== null;
   const cardClass = cn(
-    "rounded-lg border border-border bg-card p-4 space-y-2 block",
+    "rounded-lg border border-border bg-card p-3 sm:p-4 space-y-2 block overflow-hidden",
     isClickable &&
       "hover:border-primary/40 hover:bg-muted/50 transition-colors cursor-pointer"
   );
@@ -61,9 +61,9 @@ function AssetCard({
   const cardContent = (
     <>
       <div className="flex items-start justify-between gap-2">
-        <div className="flex items-center gap-2 min-w-0">
-          <FileText className="h-4 w-4 shrink-0 text-muted-foreground" />
-          <h3 className="font-medium text-sm text-foreground truncate">
+        <div className="flex items-start gap-2 min-w-0">
+          <FileText className="h-4 w-4 shrink-0 text-muted-foreground mt-0.5" />
+          <h3 className="font-medium text-sm text-foreground line-clamp-2 wrap-break-word">
             {asset.name}
           </h3>
         </div>
@@ -110,7 +110,7 @@ function AssetCard({
       )}
 
       {asset.content && (
-        <div className="pt-1 border-t border-border text-xs line-clamp-3 [&_*]:!text-xs [&_*]:!leading-snug [&_*]:!mb-0 [&_*]:!mt-0 [&_*]:!p-0">
+        <div className="pt-1 border-t border-border text-xs line-clamp-3 overflow-hidden wrap-break-word **:text-xs! **:leading-snug! **:mb-0! **:mt-0! **:p-0!">
           <PostMarkdown content={asset.content.slice(0, 500)} />
         </div>
       )}

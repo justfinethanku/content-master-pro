@@ -61,7 +61,7 @@ export function BacklogPanel({ projects }: BacklogPanelProps) {
             )}
           >
             {projects.map((project) => (
-              <div key={project.id} className="w-[200px] shrink-0">
+              <div key={project.id} className="w-[160px] sm:w-[200px] shrink-0">
                 <DraggableProjectCard project={project} variant="compact" />
               </div>
             ))}
