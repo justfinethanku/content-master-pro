@@ -3,20 +3,43 @@
 import { useMemo, useState, useEffect } from "react";
 import { useDroppable } from "@dnd-kit/core";
 import { DraggableProjectCard } from "./draggable-project-card";
-import { ProjectCard, EmptyDayCard } from "./project-card";
+import { EmptyDayCard } from "./project-card";
+import { CompactDayCell, MobileMonthList } from "./mobile-month-view";
 import type { CalendarProject } from "@/hooks/use-deliverables";
+import { useMediaQuery } from "@/hooks/use-media-query";
 import { cn } from "@/lib/utils";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
-interface CalendarGridProps {
-  projects: CalendarProject[];
-  viewMode: "month" | "week";
-  currentDate: Date;
-  scrollToToday?: number; // Increment this to trigger scroll to today
+// ──────────────────────────────────────────────
+// Shared date helpers
+// ──────────────────────────────────────────────
+
+function formatDateKey(date: Date): string {
+  return date.toISOString().split("T")[0];
 }
 
-// Get days in month grid (always includes padding from prev/next month)
+function isToday(date: Date): boolean {
+  const now = new Date();
+  return (
+    date.getDate() === now.getDate() &&
+    date.getMonth() === now.getMonth() &&
+    date.getFullYear() === now.getFullYear()
+  );
+}
+
+function isCurrentMonth(date: Date, referenceDate: Date): boolean {
+  return date.getMonth() === referenceDate.getMonth();
+}
+
+const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+const WEEKDAYS_SHORT = ["S", "M", "T", "W", "T", "F", "S"];
+
+// ──────────────────────────────────────────────
+// Date range generators
+// ──────────────────────────────────────────────
+
+/** Returns all days visible in a month grid (including prev/next month padding). */
 function getMonthDays(date: Date): Date[] {
   const year = date.getFullYear();
   const month = date.getMonth();
@@ -24,82 +47,71 @@ function getMonthDays(date: Date): Date[] {
   const firstDay = new Date(year, month, 1);
   const lastDay = new Date(year, month + 1, 0);
 
-  // Start at the Sunday before (or on) the 1st
   const startDate = new Date(firstDay);
   startDate.setDate(startDate.getDate() - startDate.getDay());
-  // Always show at least a few days from the prior month
   if (startDate.getTime() === firstDay.getTime()) {
     startDate.setDate(startDate.getDate() - 7);
   }
 
-  // End at the Saturday after (or on) the last day
   const endDate = new Date(lastDay);
   endDate.setDate(endDate.getDate() + (6 - endDate.getDay()));
-  // Always show at least a few days from the next month
   if (endDate.getDate() === lastDay.getDate() && endDate.getMonth() === lastDay.getMonth()) {
     endDate.setDate(endDate.getDate() + 7);
   }
 
   const days: Date[] = [];
   const current = new Date(startDate);
-
   while (current <= endDate) {
     days.push(new Date(current));
     current.setDate(current.getDate() + 1);
   }
-
   return days;
 }
 
-// Get extended range of days for infinite scroll (90 days before and after)
+/** Returns 181 days centered on the given date (90 before + today + 90 after). */
 function getExtendedDays(date: Date): Date[] {
   const start = new Date(date);
   start.setDate(date.getDate() - 90);
 
   const days: Date[] = [];
-  for (let i = 0; i < 181; i++) { // 90 + 1 + 90 = 181 days
+  for (let i = 0; i < 181; i++) {
     const day = new Date(start);
     day.setDate(start.getDate() + i);
     days.push(day);
   }
-
   return days;
 }
 
-function formatDateKey(date: Date): string {
-  return date.toISOString().split("T")[0];
+/** Groups projects by their scheduled date key (YYYY-MM-DD). */
+function groupByDate(projects: CalendarProject[]): Record<string, CalendarProject[]> {
+  const grouped: Record<string, CalendarProject[]> = {};
+  for (const project of projects) {
+    if (project.scheduled_date) {
+      const key = project.scheduled_date.split("T")[0];
+      if (!grouped[key]) grouped[key] = [];
+      grouped[key].push(project);
+    }
+  }
+  return grouped;
 }
 
-function isToday(date: Date): boolean {
-  const today = new Date();
-  return (
-    date.getDate() === today.getDate() &&
-    date.getMonth() === today.getMonth() &&
-    date.getFullYear() === today.getFullYear()
-  );
-}
+// ──────────────────────────────────────────────
+// Desktop month view: droppable day cell
+// ──────────────────────────────────────────────
 
-function isCurrentMonth(date: Date, currentDate: Date): boolean {
-  return date.getMonth() === currentDate.getMonth();
-}
-
-const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
-
-// Droppable day cell for month view
-interface DroppableDayMonthProps {
+interface DroppableDayCellProps {
   date: Date;
   projects: CalendarProject[];
   inCurrentMonth: boolean;
 }
 
-function DroppableDayMonth({ date, projects, inCurrentMonth }: DroppableDayMonthProps) {
+function DroppableDayCell({ date, projects, inCurrentMonth }: DroppableDayCellProps) {
   const dateKey = formatDateKey(date);
+  const today = isToday(date);
   const { setNodeRef, isOver } = useDroppable({
     id: dateKey,
     data: { date: dateKey, type: "calendar-day" },
   });
-
-  const today = isToday(date);
 
   return (
     <div
@@ -139,19 +151,21 @@ function DroppableDayMonth({ date, projects, inCurrentMonth }: DroppableDayMonth
   );
 }
 
-// Card item type for gallery - either a project or an empty day placeholder
+// ──────────────────────────────────────────────
+// Card/gallery view types & components
+// ──────────────────────────────────────────────
+
 type GalleryItem =
   | { type: "project"; project: CalendarProject; date: string; isToday: boolean }
   | { type: "empty"; date: string; isToday: boolean };
 
-// Droppable wrapper for card view items
-interface DroppableDayCardProps {
+interface DroppableCardSlotProps {
   date: string;
   isToday: boolean;
   children: React.ReactNode;
 }
 
-function DroppableDayCard({ date, isToday: todayFlag, children }: DroppableDayCardProps) {
+function DroppableCardSlot({ date, isToday: todayFlag, children }: DroppableCardSlotProps) {
   const { setNodeRef, isOver } = useDroppable({
     id: date,
     data: { date, type: "calendar-day" },
@@ -171,7 +185,10 @@ function DroppableDayCard({ date, isToday: todayFlag, children }: DroppableDayCa
   );
 }
 
-// Gallery carousel for week view
+// ──────────────────────────────────────────────
+// Gallery carousel (card view)
+// ──────────────────────────────────────────────
+
 interface GalleryCarouselProps {
   projects: CalendarProject[];
   days: Date[];
@@ -180,43 +197,38 @@ interface GalleryCarouselProps {
 
 function GalleryCarousel({ projects, days, scrollToToday }: GalleryCarouselProps) {
   const [currentIndex, setCurrentIndex] = useState(0);
-  const cardsPerPage = 3;
 
-  // Build gallery items: projects + empty day placeholders
-  // Also track the index of today's first item
+  // Responsive cards-per-page: read once from media queries for scroll math.
+  // The actual grid layout is driven by Tailwind breakpoints (grid-cols-1 md:grid-cols-2 lg:grid-cols-3).
+  const isMd = useMediaQuery("(min-width: 768px)");
+  const isLg = useMediaQuery("(min-width: 1024px)");
+  const cardsPerPage = isLg ? 3 : isMd ? 2 : 1;
+
   const { galleryItems, todayIndex } = useMemo(() => {
     const items: GalleryItem[] = [];
     const projectsByDate = new Map<string, CalendarProject[]>();
     let foundTodayIndex = -1;
 
-    // Group projects by date
-    projects.forEach((project) => {
+    for (const project of projects) {
       if (project.scheduled_date) {
         const dateKey = project.scheduled_date.split("T")[0];
-        if (!projectsByDate.has(dateKey)) {
-          projectsByDate.set(dateKey, []);
-        }
+        if (!projectsByDate.has(dateKey)) projectsByDate.set(dateKey, []);
         projectsByDate.get(dateKey)!.push(project);
       }
-    });
+    }
 
-    // Build items array in chronological order
     for (const day of days) {
       const dateKey = formatDateKey(day);
       const dayProjects = projectsByDate.get(dateKey) || [];
       const dayIsToday = isToday(day);
 
+      if (dayIsToday && foundTodayIndex === -1) {
+        foundTodayIndex = items.length;
+      }
+
       if (dayProjects.length === 0) {
-        // Empty day - add placeholder
-        if (dayIsToday && foundTodayIndex === -1) {
-          foundTodayIndex = items.length;
-        }
         items.push({ type: "empty", date: dateKey, isToday: dayIsToday });
       } else {
-        // Add all projects for this day
-        if (dayIsToday && foundTodayIndex === -1) {
-          foundTodayIndex = items.length;
-        }
         for (const project of dayProjects) {
           items.push({ type: "project", project, date: dateKey, isToday: dayIsToday });
         }
@@ -226,71 +238,62 @@ function GalleryCarousel({ projects, days, scrollToToday }: GalleryCarouselProps
     return { galleryItems: items, todayIndex: foundTodayIndex };
   }, [projects, days]);
 
-  // Scroll to today when scrollToToday changes or on initial mount
+  // Scroll to today on mount or when the Today button is pressed
   useEffect(() => {
     if (todayIndex >= 0) {
-      // Center today's card (put it in the middle of 3 cards)
       const centeredIndex = Math.max(0, Math.min(todayIndex - 1, galleryItems.length - cardsPerPage));
-      setCurrentIndex(centeredIndex);
+      requestAnimationFrame(() => setCurrentIndex(centeredIndex));
     }
-  }, [scrollToToday, todayIndex, galleryItems.length]);
+  }, [scrollToToday, todayIndex, galleryItems.length, cardsPerPage]);
 
-  const goBack = () => {
-    setCurrentIndex(Math.max(0, currentIndex - cardsPerPage));
-  };
+  const goBack = () => setCurrentIndex(Math.max(0, currentIndex - cardsPerPage));
+  const goForward = () => setCurrentIndex(Math.min(galleryItems.length - cardsPerPage, currentIndex + cardsPerPage));
 
-  const goForward = () => {
-    setCurrentIndex(Math.min(galleryItems.length - cardsPerPage, currentIndex + cardsPerPage));
-  };
-
-  // Allow scrolling but show visual indication when near edges
   const canGoBack = currentIndex > 0;
   const canGoForward = currentIndex + cardsPerPage < galleryItems.length;
-
   const visibleItems = galleryItems.slice(currentIndex, currentIndex + cardsPerPage);
 
   return (
     <div className="relative">
-      {/* Arrow buttons */}
+      {/* Navigation arrows */}
       <Button
         variant="outline"
         size="icon"
         onClick={goBack}
         disabled={!canGoBack}
         className={cn(
-          "absolute left-0 top-1/2 -translate-y-1/2 -translate-x-4 z-10",
-          "h-10 w-10 rounded-full shadow-md",
+          "absolute left-0 top-1/2 -translate-y-1/2 z-10",
+          "h-8 w-8 sm:h-10 sm:w-10 rounded-full shadow-md",
           "bg-white dark:bg-stone-900 border-stone-200 dark:border-stone-700",
           "hover:bg-yellow-50 hover:border-yellow-300 dark:hover:bg-yellow-950/50",
           "disabled:opacity-30 disabled:cursor-not-allowed"
         )}
       >
-        <ChevronLeft className="h-5 w-5" />
+        <ChevronLeft className="h-4 w-4 sm:h-5 sm:w-5" />
       </Button>
-
       <Button
         variant="outline"
         size="icon"
         onClick={goForward}
         disabled={!canGoForward}
         className={cn(
-          "absolute right-0 top-1/2 -translate-y-1/2 translate-x-4 z-10",
-          "h-10 w-10 rounded-full shadow-md",
+          "absolute right-0 top-1/2 -translate-y-1/2 z-10",
+          "h-8 w-8 sm:h-10 sm:w-10 rounded-full shadow-md",
           "bg-white dark:bg-stone-900 border-stone-200 dark:border-stone-700",
           "hover:bg-yellow-50 hover:border-yellow-300 dark:hover:bg-yellow-950/50",
           "disabled:opacity-30 disabled:cursor-not-allowed"
         )}
       >
-        <ChevronRight className="h-5 w-5" />
+        <ChevronRight className="h-4 w-4 sm:h-5 sm:w-5" />
       </Button>
 
-      {/* Cards grid - portrait aspect ratio (2:3, like paper) */}
-      <div className="px-8">
-        <div className="grid grid-cols-3 gap-5">
+      {/* Responsive card grid: Tailwind handles column count, JS handles pagination */}
+      <div className="px-10 sm:px-8">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-5 max-w-sm md:max-w-none mx-auto md:mx-0">
           {visibleItems.map((item) => (
-            <DroppableDayCard
+            <DroppableCardSlot
               key={item.type === "project" ? item.project.id : `empty-${item.date}`}
-              date={item.type === "project" ? item.date : item.date}
+              date={item.date}
               isToday={item.isToday}
             >
               {item.type === "project" ? (
@@ -298,41 +301,38 @@ function GalleryCarousel({ projects, days, scrollToToday }: GalleryCarouselProps
               ) : (
                 <EmptyDayCard date={item.date} isToday={item.isToday} />
               )}
-            </DroppableDayCard>
+            </DroppableCardSlot>
           ))}
-          {/* Fill empty slots to maintain grid */}
+          {/* Filler slots to keep grid shape consistent */}
           {visibleItems.length < cardsPerPage &&
             Array.from({ length: cardsPerPage - visibleItems.length }).map((_, i) => (
               <div key={`filler-${i}`} className="aspect-2/3" />
             ))}
         </div>
       </div>
-
     </div>
   );
+}
+
+// ──────────────────────────────────────────────
+// Main CalendarGrid export
+// ──────────────────────────────────────────────
+
+interface CalendarGridProps {
+  projects: CalendarProject[];
+  viewMode: "month" | "week";
+  currentDate: Date;
+  scrollToToday?: number;
 }
 
 export function CalendarGrid({ projects, viewMode, currentDate, scrollToToday }: CalendarGridProps) {
   const monthDays = useMemo(() => getMonthDays(currentDate), [currentDate]);
   const extendedDays = useMemo(() => getExtendedDays(currentDate), [currentDate]);
+  const isMobile = useMediaQuery("(max-width: 639px)");
 
-  const projectsByDate = useMemo(() => {
-    const grouped: Record<string, CalendarProject[]> = {};
+  const projectsByDate = useMemo(() => groupByDate(projects), [projects]);
 
-    projects.forEach((project) => {
-      if (project.scheduled_date) {
-        const key = project.scheduled_date.split("T")[0];
-        if (!grouped[key]) {
-          grouped[key] = [];
-        }
-        grouped[key].push(project);
-      }
-    });
-
-    return grouped;
-  }, [projects]);
-
-  // Week view = Gallery carousel
+  // Card/gallery view
   if (viewMode === "week") {
     return (
       <div className="py-4">
@@ -341,7 +341,44 @@ export function CalendarGrid({ projects, viewMode, currentDate, scrollToToday }:
     );
   }
 
-  // Month view = Traditional calendar grid
+  // Mobile month view: compact mini-calendar + scrollable day list
+  if (isMobile) {
+    return (
+      <div>
+        <div className="border border-stone-200 dark:border-stone-800 rounded-xl overflow-hidden shadow-sm mb-4">
+          <div className="grid grid-cols-7 border-b border-stone-200 dark:border-stone-800 bg-stone-50 dark:bg-stone-900">
+            {WEEKDAYS_SHORT.map((day, i) => (
+              <div
+                key={`${day}-${i}`}
+                className="py-1 text-center text-[10px] font-medium text-stone-500 dark:text-stone-500 border-r border-stone-200 dark:border-stone-800 last:border-r-0"
+              >
+                {day}
+              </div>
+            ))}
+          </div>
+          <div className="grid grid-cols-7">
+            {monthDays.map((day, i) => (
+              <CompactDayCell
+                key={i}
+                date={day}
+                projects={projectsByDate[formatDateKey(day)] || []}
+                inCurrentMonth={isCurrentMonth(day, currentDate)}
+                isToday={isToday(day)}
+              />
+            ))}
+          </div>
+        </div>
+
+        <MobileMonthList
+          days={monthDays}
+          projectsByDate={projectsByDate}
+          currentDate={currentDate}
+        />
+      </div>
+    );
+  }
+
+  // Desktop month view: traditional 7-column grid
   return (
     <div className="border border-stone-200 dark:border-stone-800 rounded-xl overflow-hidden shadow-sm">
       <div className="grid grid-cols-7 border-b border-stone-200 dark:border-stone-800 bg-stone-50 dark:bg-stone-900">
@@ -356,20 +393,14 @@ export function CalendarGrid({ projects, viewMode, currentDate, scrollToToday }:
       </div>
 
       <div className="grid grid-cols-7">
-        {monthDays.map((day, i) => {
-          const dateKey = formatDateKey(day);
-          const dayProjects = projectsByDate[dateKey] || [];
-          const inCurrentMonth = isCurrentMonth(day, currentDate);
-
-          return (
-            <DroppableDayMonth
-              key={i}
-              date={day}
-              projects={dayProjects}
-              inCurrentMonth={inCurrentMonth}
-            />
-          );
-        })}
+        {monthDays.map((day, i) => (
+          <DroppableDayCell
+            key={i}
+            date={day}
+            projects={projectsByDate[formatDateKey(day)] || []}
+            inCurrentMonth={isCurrentMonth(day, currentDate)}
+          />
+        ))}
       </div>
     </div>
   );

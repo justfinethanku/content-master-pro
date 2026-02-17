@@ -260,33 +260,35 @@ export function CalendarView() {
   return (
     <div className="space-y-4">
       {/* Header */}
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        {/* Title and Navigation */}
-        <div className="flex items-center gap-2">
-          {viewMode === "month" && (
-            <>
-              <Button variant="outline" size="icon" onClick={goToPrevious}>
-                <ChevronLeft className="h-4 w-4" />
-              </Button>
-              <Button variant="outline" size="icon" onClick={goToNext}>
-                <ChevronRight className="h-4 w-4" />
-              </Button>
-              <h2 className="text-xl font-semibold text-foreground min-w-[200px]">
-                {formatMonthYear(currentDate)}
-              </h2>
-            </>
-          )}
+      <div className="space-y-3">
+        {/* Row 1: Navigation + Today */}
+        <div className="flex items-center justify-between gap-2">
+          <div className="flex items-center gap-1 sm:gap-2">
+            {viewMode === "month" && (
+              <>
+                <Button variant="outline" size="icon" className="h-8 w-8 sm:h-9 sm:w-9" onClick={goToPrevious}>
+                  <ChevronLeft className="h-4 w-4" />
+                </Button>
+                <Button variant="outline" size="icon" className="h-8 w-8 sm:h-9 sm:w-9" onClick={goToNext}>
+                  <ChevronRight className="h-4 w-4" />
+                </Button>
+              </>
+            )}
+            <h2 className="text-base sm:text-xl font-semibold text-foreground truncate">
+              {viewMode === "month" ? formatMonthYear(currentDate) : formatWeekRange(currentDate)}
+            </h2>
+          </div>
           <Button
             variant="outline"
             size="sm"
             onClick={goToToday}
-            className="border-green-500 bg-green-50 text-green-700 hover:bg-green-100 hover:border-green-600 dark:bg-green-950/30 dark:text-green-400 dark:border-green-600 dark:hover:bg-green-950/50"
+            className="shrink-0 border-green-500 bg-green-50 text-green-700 hover:bg-green-100 hover:border-green-600 dark:bg-green-950/30 dark:text-green-400 dark:border-green-600 dark:hover:bg-green-950/50"
           >
             Today
           </Button>
         </div>
 
-        {/* Controls */}
+        {/* Row 2: Controls */}
         <div className="flex items-center gap-2 flex-wrap">
           {/* View Toggle */}
           <div className="flex items-center border border-border rounded-lg overflow-hidden">
@@ -294,7 +296,7 @@ export function CalendarView() {
               variant={viewMode === "month" ? "secondary" : "ghost"}
               size="sm"
               onClick={() => setViewMode("month")}
-              className="rounded-none"
+              className="rounded-none h-8 px-3 text-xs sm:text-sm"
             >
               Month
             </Button>
@@ -302,7 +304,7 @@ export function CalendarView() {
               variant={viewMode === "week" ? "secondary" : "ghost"}
               size="sm"
               onClick={() => setViewMode("week")}
-              className="rounded-none"
+              className="rounded-none h-8 px-3 text-xs sm:text-sm"
             >
               Card
             </Button>
@@ -313,7 +315,7 @@ export function CalendarView() {
             value={statusFilter}
             onValueChange={(v) => setStatusFilter(v as ProjectStatus | "all")}
           >
-            <SelectTrigger className="w-[130px]">
+            <SelectTrigger className="w-[110px] sm:w-[130px] h-8">
               <SelectValue placeholder="Status" />
             </SelectTrigger>
             <SelectContent>
@@ -327,10 +329,10 @@ export function CalendarView() {
           </Select>
 
           {/* Quick Create */}
-          <Button asChild>
+          <Button asChild size="sm" className="h-8 ml-auto">
             <Link href="/deliverables/new">
-              <Plus className="h-4 w-4 mr-1" />
-              New Project
+              <Plus className="h-4 w-4 sm:mr-1" />
+              <span className="hidden sm:inline">New Project</span>
             </Link>
           </Button>
         </div>
@@ -367,14 +369,14 @@ export function CalendarView() {
       )}
 
       {/* Summary */}
-      <div className="flex items-center justify-between text-sm text-muted-foreground">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 text-sm text-muted-foreground">
         <div className="flex items-center gap-1">
           <Calendar className="h-4 w-4" />
           <span>
             {projects.length} project{projects.length !== 1 ? "s" : ""} in view
           </span>
         </div>
-        <div className="flex items-center gap-4">
+        <div className="flex items-center gap-3 sm:gap-4 flex-wrap">
           {Object.entries(STATUS_CONFIG).map(([status, config]) => {
             const count = projects.filter((p) => p.status === status).length;
             if (count === 0) return null;
@@ -383,7 +385,7 @@ export function CalendarView() {
                 <span
                   className={`w-2 h-2 rounded-full ${config.dotClass}`}
                 />
-                <span className="text-stone-600 dark:text-stone-400">
+                <span className="text-stone-600 dark:text-stone-400 text-xs sm:text-sm">
                   {count} {config.label.toLowerCase()}
                 </span>
               </span>
