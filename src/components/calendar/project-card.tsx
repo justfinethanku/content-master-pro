@@ -117,7 +117,7 @@ export function ProjectCard({ project, variant = "compact", isToday = false }: P
     project.status === "scheduled" && project.scheduled_date && project.scheduled_date < today
       ? "published"
       : project.status;
-  const statusConfig = STATUS_CONFIG[effectiveStatus];
+  const statusConfig = STATUS_CONFIG[effectiveStatus] ?? STATUS_CONFIG.draft;
   // Use content_summary from main post draft or outline (not notes)
   const summary = truncateWords(project.content_summary, 75);
 

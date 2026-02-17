@@ -1,8 +1,7 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import Link from "next/link";
-import { useSearchParams } from "next/navigation";
 import { useDeliverables, type DeliverableFilters } from "@/hooks/use-deliverables";
 import type { ProjectStatus } from "@/lib/types";
 import { Input } from "@/components/ui/input";
@@ -36,11 +35,15 @@ const STATUS_COLORS: Record<ProjectStatus, string> = {
 };
 
 export default function DeliverablesPage() {
-  const searchParams = useSearchParams();
-  const initialStatus = searchParams.get("status") ?? "draft";
-
   const [search, setSearch] = useState("");
-  const [statusFilter, setStatusFilter] = useState<string>(initialStatus);
+  const [statusFilter, setStatusFilter] = useState<string>("draft");
+
+  // Read URL query param on mount (avoids useSearchParams Suspense requirement)
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const status = params.get("status");
+    if (status) setStatusFilter(status);
+  }, []);
   const [sortBy, setSortBy] = useState<"date" | "name">("date");
 
   const filters: DeliverableFilters = {

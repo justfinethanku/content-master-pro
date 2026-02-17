@@ -1,8 +1,8 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
-import { usePathname, useSearchParams } from "next/navigation";
+import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
 import { useSidebar } from "@/contexts/sidebar-context";
 import { Button } from "@/components/ui/button";
@@ -49,8 +49,13 @@ const navigation = [
 
 export function Sidebar() {
   const pathname = usePathname();
-  const searchParams = useSearchParams();
   const { isCollapsed, toggle, isMobileOpen, closeMobile } = useSidebar();
+
+  // Read search string on the client only (avoids useSearchParams Suspense requirement)
+  const [search, setSearch] = useState("");
+  useEffect(() => {
+    setSearch(window.location.search);
+  }, [pathname]);
 
   // Auto-close mobile sidebar on navigation
   useEffect(() => {
@@ -63,23 +68,16 @@ export function Sidebar() {
       const [itemPath, itemQuery] = item.href.split("?");
       let isActive: boolean;
       if (itemQuery) {
-        // Query param link: active only when path matches AND query param matches
-        const params = new URLSearchParams(itemQuery);
+        // Query param link: active only when path matches AND query param is present in URL
         isActive =
           pathname === itemPath &&
-          Array.from(params.entries()).every(
-            ([key, value]) => searchParams.get(key) === value
-          );
+          search.includes(itemQuery);
       } else {
         // Regular link: active when exact match or subpath, but NOT if a query-param sibling is active
         const hasQuerySibling = items.some((other) => {
           if (!other.href.includes("?")) return false;
           const [otherPath, otherQuery] = other.href.split("?");
-          if (otherPath !== itemPath) return false;
-          const params = new URLSearchParams(otherQuery);
-          return Array.from(params.entries()).every(
-            ([key, value]) => searchParams.get(key) === value
-          );
+          return otherPath === itemPath && search.includes(otherQuery);
         });
         isActive =
           !hasQuerySibling &&
