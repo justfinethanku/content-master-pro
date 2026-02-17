@@ -330,3 +330,55 @@ TEST_PASSWORD                 # Test account password
 ## Content Sync
 
 See [`CLAUDE-SYNC.md`](./CLAUDE-SYNC.md) for Nate's newsletter sync (CDP-based, daily automation available).
+
+## Executive Circle MCP
+
+Read-only MCP server for Executive Circle subscribers (paid Substack tier). Gives subscribers AI-powered access to published posts and prompt kits from their AI clients.
+
+### Architecture
+
+```
+Subscriber registers at promptkits.natebjones.com/executive/mcp
+    ↓ POST /api/subscriber/register (validates access code, returns token)
+Subscriber connects Claude Desktop / ChatGPT
+    ↓ POST /api/mcp/subscriber/{token}
+subscriber-server.ts (6 read-only tools)
+    ↓ queries imported_posts + project_assets
+Supabase
+```
+
+### Key Files
+
+| File | Purpose |
+|------|---------|
+| `src/lib/mcp/subscriber-server.ts` | MCP server with 6 read-only tools |
+| `src/lib/mcp/subscriber-rate-limit.ts` | 120/min, 2,000/day rate limiting |
+| `src/app/api/mcp/subscriber/[token]/route.ts` | MCP endpoint (auth + rate limit + transport) |
+| `src/app/api/subscriber/register/route.ts` | Registration API (access code validation) |
+| `src/app/api/executive-mcp/subscribers/route.ts` | Admin API (list/revoke subscribers) |
+| `src/app/(dashboard)/executive-mcp/page.tsx` | Admin dashboard page |
+
+### Database Tables
+
+- `subscriber_mcp_access` — subscriber tokens, usage stats, revocation
+- `subscriber_mcp_usage` — per-request log for rate limiting
+- `app_settings` (category: `executive_circle`, key: `access_code`) — access code gate
+
+### Registration Page (separate repo)
+
+Lives in `prompt-kit-presenter` (`/Users/jonathanedwards/AUTOMATION/SubStack/prompt-kit-presenter`):
+- `src/app/executive/mcp/page.tsx` — page wrapper
+- `src/components/mcp-registration.tsx` — 3-step flow (access code → register → setup instructions)
+- Calls CMP's `/api/subscriber/register` endpoint
+- URL: `promptkits.natebjones.com/executive/mcp`
+
+### Tools Exposed to Subscribers
+
+| Tool | Description |
+|------|-------------|
+| `search_posts` | Keyword search across all published posts |
+| `get_post` | Full post content by UUID |
+| `list_recent_posts` | Paginated recent posts |
+| `search_prompt_kits` | Keyword search across prompt kits |
+| `get_prompt_kit` | Full prompt kit content by UUID |
+| `list_prompt_kits` | All available prompt kits |

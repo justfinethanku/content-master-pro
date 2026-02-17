@@ -20,6 +20,7 @@ import {
   PanelLeftClose,
   PanelLeftOpen,
   Plug,
+  Users,
 } from "lucide-react";
 
 const navigation = [
@@ -27,6 +28,7 @@ const navigation = [
   { name: "Deliverables", href: "/deliverables", icon: Package },
   { name: "Roadmap", href: "/roadmap", icon: Map },
   { name: "MCP", href: "/mcp", icon: Plug },
+  { name: "Exec Circle", href: "/executive-mcp", icon: Users },
 ];
 
 // Commented out during frontend rebuild — will re-enable as pages are rebuilt
