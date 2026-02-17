@@ -3,8 +3,8 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
-import { useDeliverable, useUpdateProjectName, useUpdateProjectUrl, useDeleteProject } from "@/hooks/use-deliverables";
-import type { ProjectAsset } from "@/lib/types";
+import { useDeliverable, useUpdateProjectName, useUpdateProjectUrl, useUpdateProjectStatus, useDeleteProject } from "@/hooks/use-deliverables";
+import type { ProjectAsset, ProjectStatus } from "@/lib/types";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -18,6 +18,13 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { cn } from "@/lib/utils";
 import PostMarkdown from "@/components/post-markdown";
 import {
@@ -31,6 +38,7 @@ import {
 } from "lucide-react";
 
 const STATUS_COLORS: Record<string, string> = {
+  idea: "bg-amber-500/15 text-amber-700 dark:text-amber-400",
   draft: "bg-muted text-muted-foreground",
   in_progress: "bg-blue-500/15 text-blue-700 dark:text-blue-400",
   review: "bg-yellow-500/15 text-yellow-700 dark:text-yellow-400",
@@ -40,6 +48,16 @@ const STATUS_COLORS: Record<string, string> = {
   ready: "bg-blue-500/15 text-blue-700 dark:text-blue-400",
   final: "bg-green-500/15 text-green-700 dark:text-green-400",
 };
+
+const PROJECT_STATUSES: { value: ProjectStatus; label: string }[] = [
+  { value: "idea", label: "Idea" },
+  { value: "draft", label: "Draft" },
+  { value: "in_progress", label: "In progress" },
+  { value: "review", label: "Review" },
+  { value: "scheduled", label: "Scheduled" },
+  { value: "published", label: "Published" },
+  { value: "archived", label: "Archived" },
+];
 
 function AssetCard({
   asset,
@@ -342,6 +360,7 @@ export default function DeliverableDetailPage() {
 
   const { data, isLoading, error } = useDeliverable(id);
   const deleteProject = useDeleteProject();
+  const updateStatus = useUpdateProjectStatus();
   const [deleting, setDeleting] = useState(false);
 
   if (isLoading) {
@@ -401,12 +420,28 @@ export default function DeliverableDetailPage() {
             )}
           </div>
           <div className="flex items-center gap-2 shrink-0 self-start">
-            <Badge
-              variant="secondary"
-              className={cn(STATUS_COLORS[project.status])}
+            <Select
+              value={project.status}
+              onValueChange={(value) =>
+                updateStatus.mutate({ id: project.id, status: value as ProjectStatus })
+              }
             >
-              {project.status.replace("_", " ")}
-            </Badge>
+              <SelectTrigger
+                className={cn(
+                  "h-7 w-auto gap-1.5 rounded-full border-0 px-2.5 text-xs font-medium",
+                  STATUS_COLORS[project.status]
+                )}
+              >
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {PROJECT_STATUSES.map((s) => (
+                  <SelectItem key={s.value} value={s.value}>
+                    {s.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
             <AlertDialog>
               <AlertDialogTrigger asChild>
                 <button
