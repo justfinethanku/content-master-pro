@@ -338,7 +338,7 @@ Read-only MCP server for Executive Circle subscribers (paid Substack tier). Give
 ### Architecture
 
 ```
-Subscriber registers at promptkits.natebjones.com/executive/mcp
+Subscriber registers at promptkit.natebjones.com/executive/mcp
     ↓ POST /api/subscriber/register (validates access code, returns token)
 Subscriber connects Claude Desktop / ChatGPT
     ↓ POST /api/mcp/subscriber/{token}
@@ -370,7 +370,7 @@ Lives in `prompt-kit-presenter` (`/Users/jonathanedwards/AUTOMATION/SubStack/pro
 - `src/app/executive/mcp/page.tsx` — page wrapper
 - `src/components/mcp-registration.tsx` — 3-step flow (access code → register → setup instructions)
 - Calls CMP's `/api/subscriber/register` endpoint
-- URL: `promptkits.natebjones.com/executive/mcp`
+- URL: `promptkit.natebjones.com/executive/mcp`
 
 ### Tools Exposed to Subscribers
 

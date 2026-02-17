@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createServiceClient } from "@/lib/supabase/admin";
 import { randomBytes } from "crypto";
 
-const ALLOWED_ORIGIN = "https://promptkits.natebjones.com";
+const ALLOWED_ORIGIN = "https://promptkit.natebjones.com";
 
 const CORS_HEADERS = {
   "Access-Control-Allow-Origin": ALLOWED_ORIGIN,
