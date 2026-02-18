@@ -170,7 +170,7 @@ const { data } = useQuery({
 
 Provider hierarchy (`src/components/providers/`): `ThemeProvider` → `QueryProvider` (1-min stale time, no refetch on focus) → `TooltipProvider`
 
-### Content Routing System
+### Content Routing System (hidden, not in sidebar)
 
 Rule-based routing engine in `src/lib/routing/`:
 - `router.ts` — Recursive condition evaluator, first-match rule finder
@@ -178,9 +178,7 @@ Rule-based routing engine in `src/lib/routing/`:
 - `scheduler.ts` — Calendar slot assignment
 - `queries.ts` — Database queries for routing config
 
-### Partner API
-
-External API system in `src/lib/partner-api/`: API key auth, namespace permissions, rate limiting, usage tracking. Routes under `/api/v1/`.
+Built by Kaleab. Pages exist at `/routing/*` and `/studio/routing-rules|scoring|tiers|publications|calendar-slots` but are not in the sidebar. Preserved for future revisiting.
 
 ## Key Modules
 
@@ -195,10 +193,8 @@ External API system in `src/lib/partner-api/`: API key auth, namespace permissio
 | Generate hook | `src/hooks/use-generate.ts` | `useGenerate()`, `useGenerateJSON<T>()`, `useResearch()` |
 | Pinecone search | `src/lib/pinecone/search.ts` | Multi-namespace semantic search |
 | Pinecone namespaces | `src/lib/pinecone/namespaces.ts` | DB-driven config with cache |
-| Content routing | `src/lib/routing/` | Rule engine, scorer, scheduler |
-| Partner API | `src/lib/partner-api/` | Auth, rate limiting, usage |
-| Types | `src/lib/types.ts` | All TypeScript types (~1400 lines) |
-| Constants | `src/lib/constants.ts` | AI models, statuses, slugs |
+| Content routing | `src/lib/routing/` | Rule engine, scorer, scheduler (hidden) |
+| Types | `src/lib/types.ts` | All TypeScript types |
 | Utils | `src/lib/utils.ts` | `cn()` for Tailwind class merging |
 
 ## Database Tables
@@ -217,9 +213,6 @@ External API system in `src/lib/partner-api/`: API key auth, namespace permissio
 
 ### Projects
 `content_projects`, `project_assets`, `asset_versions`
-
-### Partner API
-`partners`, `partner_api_keys`, `namespace_permissions`, `api_usage_logs`
 
 ### Configuration
 - `app_settings` — All configurable values (JSON). Keyed by `category` + `key`.
@@ -313,6 +306,18 @@ const response = await callAIWithLogging({
   variables: { themes: extractedThemes }
 });
 ```
+
+## Cron Jobs (TODO — needs review)
+
+Three cron API routes exist but need review and possible rewiring:
+
+| Route | Purpose | Status |
+|-------|---------|--------|
+| `/api/cron/sync` | Automated content sync | Needs review — verify what it syncs and whether it's active on Vercel |
+| `/api/cron/link-substack` | Links imported posts to Substack URLs | Needs review — check if still relevant |
+| `/api/cron/ingest-changelogs` | Ingests changelog entries | Needs review — may feed the roadmap feature |
+
+These are not currently wired into any UI. Revisit in a future session to determine which are still needed and configure Vercel cron schedules.
 
 ## Environment Variables
 

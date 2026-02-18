@@ -21,6 +21,7 @@ import {
   PanelLeftClose,
   PanelLeftOpen,
   Plug,
+  Sliders,
   Users,
 } from "lucide-react";
 
@@ -33,21 +34,14 @@ const navigation = [
   { name: "Exec Circle", href: "/executive-mcp", icon: Users },
 ];
 
-// Commented out during frontend rebuild — will re-enable as pages are rebuilt
-// const adminNavigation = [
-//   { name: "Invites", href: "/admin/invites", icon: Mail },
-//   { name: "Partners", href: "/admin/partners", icon: Users },
-//   { name: "API Usage", href: "/admin/usage", icon: BarChart3 },
-// ];
+const ADMIN_EMAIL = "jon@contentionmedia.com";
 
-// const partnerNavigation = [
-//   { name: "Partner Dashboard", href: "/partner", icon: LayoutDashboard },
-//   { name: "API Keys", href: "/partner/keys", icon: Key },
-//   { name: "Usage", href: "/partner/usage", icon: BarChart3 },
-//   { name: "API Docs", href: "/docs/api", icon: BookOpen },
-// ];
+const adminNavigation = [
+  { name: "Studio", href: "/studio", icon: Sliders },
+];
 
-export function Sidebar() {
+export function Sidebar({ userEmail }: { userEmail?: string }) {
+  const isAdmin = userEmail === ADMIN_EMAIL;
   const pathname = usePathname();
   const { isCollapsed, toggle, isMobileOpen, closeMobile } = useSidebar();
 
@@ -153,6 +147,15 @@ export function Sidebar() {
         !mobile && isCollapsed ? "p-2" : "p-4"
       )}>
         {renderNavItems(navigation, mobile ? "mobile" : "main", mobile)}
+        {isAdmin && (
+          <>
+            <div className={cn(
+              "my-2 border-t border-border",
+              !mobile && isCollapsed ? "mx-1" : "mx-0"
+            )} />
+            {renderNavItems(adminNavigation, mobile ? "mobile-admin" : "admin", mobile)}
+          </>
+        )}
       </nav>
 
       {/* Expand button when collapsed (desktop only) */}

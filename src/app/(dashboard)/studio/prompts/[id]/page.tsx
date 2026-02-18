@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback, useRef, useMemo } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -15,23 +15,17 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { ScrollArea } from "@/components/ui/scroll-area";
 import {
   ArrowLeft,
   Save,
   Loader2,
   Check,
   AlertCircle,
-  GripVertical,
-  ChevronDown,
-  ChevronRight,
   History,
   Archive,
   RotateCcw,
 } from "lucide-react";
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { createClient } from "@/lib/supabase/client";
-import { DndContext, DragEndEvent, useDraggable, useDroppable, DragOverlay, DragStartEvent } from "@dnd-kit/core";
 
 interface PromptSet {
   id: string;
@@ -41,17 +35,6 @@ interface PromptSet {
   description: string | null;
   current_version_id: string | null;
   pipeline_stage: string | null;
-}
-
-interface PromptVariable {
-  id: string;
-  variable_name: string;
-  display_name: string;
-  description: string | null;
-  category: string;
-  creator: "user" | "ai" | "system";
-  available_after_stage: string;
-  fallback_value: string | null;
 }
 
 interface PromptVersion {
@@ -78,126 +61,6 @@ interface AIModel {
   supports_thinking: boolean;
 }
 
-// Pipeline stage order
-const stageOrderMap: Record<string, number> = {
-  create: 1,
-  research: 2,
-  outline: 3,
-  draft: 4,
-  voice: 5,
-  outputs: 6,
-  utility: 99,
-};
-
-// Draggable Variable Component
-function DraggableVariable({
-  variable,
-  onInsert,
-  isUsed,
-  useCount,
-}: {
-  variable: PromptVariable;
-  onInsert: () => void;
-  isUsed: boolean;
-  useCount: number;
-}) {
-  const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
-    id: variable.id,
-    data: { variable },
-  });
-
-  return (
-    <div
-      ref={setNodeRef}
-      className={`flex items-center gap-2 p-2 rounded-lg border transition-colors ${
-        isUsed
-          ? "bg-green-50 dark:bg-green-950/30 border-green-200 dark:border-green-800"
-          : "bg-card hover:bg-muted/50 border-border"
-      } ${isDragging ? "opacity-50" : ""}`}
-    >
-      <div
-        {...listeners}
-        {...attributes}
-        className="cursor-grab active:cursor-grabbing p-1 hover:bg-muted rounded touch-none shrink-0"
-        title="Drag to insert into prompt"
-      >
-        <GripVertical className="h-4 w-4 text-muted-foreground" />
-      </div>
-      <button
-        type="button"
-        className="flex-1 text-left min-w-0 overflow-hidden"
-        onClick={onInsert}
-        title={`${variable.variable_name}\n${variable.description || variable.display_name}`}
-      >
-        <div className="flex items-center gap-2 flex-wrap">
-          {isUsed && (
-            <Check className="h-3 w-3 text-green-600 shrink-0" />
-          )}
-          <span className={`text-sm font-mono break-all ${isUsed ? "text-green-700 dark:text-green-400" : "text-foreground"}`}>
-            {variable.variable_name}
-          </span>
-          {useCount > 1 && (
-            <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-green-200 dark:bg-green-800 text-green-700 dark:text-green-300 font-medium">
-              ×{useCount}
-            </span>
-          )}
-          <Badge
-            variant="outline"
-            className={`text-[10px] px-1 shrink-0 ${
-              variable.creator === "user"
-                ? "border-blue-500 text-blue-600"
-                : variable.creator === "ai"
-                ? "border-purple-500 text-purple-600"
-                : "border-gray-500 text-gray-600"
-            }`}
-          >
-            {variable.creator}
-          </Badge>
-        </div>
-      </button>
-    </div>
-  );
-}
-
-// Droppable Textarea Component
-function DroppableTextarea({
-  textareaRef,
-  value,
-  onChange,
-  onBlur,
-}: {
-  textareaRef: React.RefObject<HTMLTextAreaElement | null>;
-  value: string;
-  onChange: (value: string) => void;
-  onBlur: () => void;
-}) {
-  const { setNodeRef, isOver } = useDroppable({
-    id: "prompt-textarea",
-  });
-
-  return (
-    <div ref={setNodeRef} className="relative flex-1 min-h-0">
-      <Textarea
-        ref={textareaRef}
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        onBlur={onBlur}
-        className={`h-full font-mono text-sm resize-none ${
-          isOver ? "ring-2 ring-primary ring-offset-2" : ""
-        }`}
-        placeholder="Enter your prompt here. Use {{variable}} for interpolation."
-      />
-      {isOver && (
-        <div className="absolute inset-0 pointer-events-none bg-primary/5 border-2 border-dashed border-primary rounded-lg flex items-center justify-center">
-          <span className="bg-background px-3 py-2 rounded text-sm text-primary font-medium">
-            Drop to insert variable
-          </span>
-        </div>
-      )}
-    </div>
-  );
-}
-
 export default function PromptEditorPage() {
   const params = useParams();
   const router = useRouter();
@@ -220,19 +83,10 @@ export default function PromptEditorPage() {
   const [saveSuccess, setSaveSuccess] = useState(false);
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
 
-  // Variables
-  const [availableVariables, setAvailableVariables] = useState<PromptVariable[]>([]);
-  const [collapsedCategories, setCollapsedCategories] = useState<Set<string>>(new Set());
-
   // Version history
   const [allVersions, setAllVersions] = useState<PromptVersion[]>([]);
   const [showVersionHistory, setShowVersionHistory] = useState(false);
   const [isArchiving, setIsArchiving] = useState<string | null>(null);
-
-  // Drag and drop
-  const [activeDragVariable, setActiveDragVariable] = useState<PromptVariable | null>(null);
-  const textareaRef = useRef<HTMLTextAreaElement>(null);
-  const cursorPositionRef = useRef<number>(0);
 
   const supabase = createClient();
 
@@ -281,9 +135,6 @@ export default function PromptEditorPage() {
 
         setModels(aiModels || []);
 
-        // Load variables for this prompt's stage
-        await loadVariablesForPrompt(promptData.id, promptData.pipeline_stage);
-
         // Load all versions for history
         await loadAllVersions(promptData.id);
 
@@ -299,53 +150,6 @@ export default function PromptEditorPage() {
       loadPrompt();
     }
   }, [promptId, supabase]);
-
-  // Load variables for prompt's pipeline stage
-  const loadVariablesForPrompt = async (_promptSetId: string, pipelineStage: string | null) => {
-    const promptStageOrder = pipelineStage ? stageOrderMap[pipelineStage] || 99 : 99;
-
-    // Load active variables
-    const { data: vars, error: varsError } = await supabase
-      .from("prompt_variables")
-      .select("*")
-      .eq("is_active", true)
-      .order("category")
-      .order("sort_order");
-
-    if (varsError) {
-      console.error("Failed to load variables:", varsError);
-      return;
-    }
-
-    // Filter to only variables available BEFORE this prompt's stage
-    // Exclude system metadata, UI state, and non-content categories
-    const excludedCategories = ['session', 'user', 'model'];
-    const excludedPatterns = [
-      '_id_',           // IDs
-      '_status_',       // Status flags
-      '_created_at_',   // Timestamps
-      '_updated_at_',   // Timestamps
-      '_selected_',     // UI state (checkbox selections)
-      '_skip_',         // Boolean workflow flags
-    ];
-    const filteredVars = (vars || []).filter(v => {
-      const varStageOrder = stageOrderMap[v.available_after_stage] || 0;
-      const isExcludedCategory = excludedCategories.includes(v.category);
-      const isExcludedPattern = excludedPatterns.some(pattern => v.variable_name.includes(pattern));
-
-      if (isExcludedCategory || isExcludedPattern) return false;
-
-      // Same stage: only show USER inputs (not AI outputs - those don't exist yet)
-      if (varStageOrder === promptStageOrder) {
-        return v.creator === 'user';
-      }
-
-      // Earlier stages: show everything (user inputs + AI outputs)
-      return varStageOrder < promptStageOrder;
-    });
-
-    setAvailableVariables(filteredVars);
-  };
 
   // Load all versions for history view
   const loadAllVersions = async (promptSetId: string) => {
@@ -374,7 +178,6 @@ export default function PromptEditorPage() {
         .update({ status: "archived" })
         .eq("id", versionId);
 
-      // Reload versions
       await loadAllVersions(prompt.id);
     } catch (err) {
       console.error("Failed to archive version:", err);
@@ -439,72 +242,8 @@ export default function PromptEditorPage() {
     setHasUnsavedChanges(hasChanges);
   }, [editorContent, editorModelId, editorTemperature, editorMaxTokens, editorReasoningEnabled, editorReasoningBudget, currentVersion]);
 
-  // Toggle category collapse
-  const toggleCategoryCollapse = useCallback((category: string) => {
-    setCollapsedCategories(prev => {
-      const next = new Set(prev);
-      if (next.has(category)) {
-        next.delete(category);
-      } else {
-        next.add(category);
-      }
-      return next;
-    });
-  }, []);
-
-  // Insert variable at cursor
-  const insertVariableAtCursor = useCallback((variableName: string) => {
-    const varText = `{{${variableName}}}`;
-    const textarea = textareaRef.current;
-    if (!textarea) {
-      setEditorContent(prev => prev + varText);
-      return;
-    }
-
-    const cursorPos = textarea.selectionStart ?? cursorPositionRef.current ?? editorContent.length;
-    const before = editorContent.slice(0, cursorPos);
-    const after = editorContent.slice(cursorPos);
-    const newContent = before + varText + after;
-    setEditorContent(newContent);
-
-    setTimeout(() => {
-      if (textarea) {
-        const newPos = cursorPos + varText.length;
-        textarea.setSelectionRange(newPos, newPos);
-        textarea.focus();
-      }
-    }, 0);
-  }, [editorContent]);
-
-  // Drag handlers
-  const handleDragStart = (event: DragStartEvent) => {
-    const variableId = event.active.id as string;
-    const variable = availableVariables.find(v => v.id === variableId);
-    if (variable) {
-      setActiveDragVariable(variable);
-    }
-  };
-
-  const handleDragEnd = (event: DragEndEvent) => {
-    setActiveDragVariable(null);
-    const { active, over } = event;
-    if (!over || over.id !== "prompt-textarea") return;
-
-    const variableId = active.id as string;
-    const variable = availableVariables.find(v => v.id === variableId);
-    if (variable) {
-      insertVariableAtCursor(variable.variable_name);
-    }
-  };
-
-  const handleTextareaBlur = () => {
-    if (textareaRef.current) {
-      cursorPositionRef.current = textareaRef.current.selectionStart || 0;
-    }
-  };
-
   // Save prompt
-  const savePrompt = async () => {
+  const savePrompt = useCallback(async () => {
     if (!prompt) return;
 
     setIsSaving(true);
@@ -571,7 +310,7 @@ export default function PromptEditorPage() {
     } finally {
       setIsSaving(false);
     }
-  };
+  }, [prompt, editorContent, editorModelId, editorTemperature, editorMaxTokens, editorReasoningEnabled, editorReasoningBudget, supabase]);
 
   const getStageColor = (stage: string | null): string => {
     switch (stage) {
@@ -586,31 +325,11 @@ export default function PromptEditorPage() {
     }
   };
 
-  // Group variables by category
-  const variablesByCategory = availableVariables.reduce((acc, v) => {
-    if (!acc[v.category]) acc[v.category] = [];
-    acc[v.category].push(v);
-    return acc;
-  }, {} as Record<string, PromptVariable[]>);
-
   // Check if selected model supports extended thinking
   const selectedModelSupportsThinking = useMemo(() => {
     const selectedModel = models.find(m => m.id === editorModelId);
     return selectedModel?.supports_thinking ?? false;
   }, [models, editorModelId]);
-
-  // Calculate variable usage counts from editor content
-  const variableUsageCounts = useMemo(() => {
-    const counts: Record<string, number> = {};
-    // Match all {{variable_name}} patterns
-    const regex = /\{\{(\w+)\}\}/g;
-    let match;
-    while ((match = regex.exec(editorContent)) !== null) {
-      const varName = match[1];
-      counts[varName] = (counts[varName] || 0) + 1;
-    }
-    return counts;
-  }, [editorContent]);
 
   if (isLoading) {
     return (
@@ -638,7 +357,7 @@ export default function PromptEditorPage() {
   }
 
   return (
-    <DndContext onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
+    <>
       {/* -m-6 cancels parent padding, height accounts for dashboard header + studio title/tabs */}
       <div className="-m-6 h-[calc(100vh-14rem)] flex flex-col overflow-hidden">
         {/* Header */}
@@ -772,8 +491,7 @@ export default function PromptEditorPage() {
         )}
 
         {/* Main Content */}
-        <div className="flex-1 flex overflow-hidden min-h-0 border-2 border-border m-6 rounded-lg">
-          {/* Left: Prompt Editor */}
+        <div className="flex-1 flex flex-col overflow-hidden min-h-0 border-2 border-border m-6 rounded-lg">
           <div className="flex-1 flex flex-col p-6 overflow-hidden min-h-0">
             {/* Model Config */}
             <div className="space-y-4 mb-4 shrink-0">
@@ -869,93 +587,16 @@ export default function PromptEditorPage() {
             {/* Prompt Textarea */}
             <div className="flex-1 flex flex-col min-h-0">
               <Label className="mb-2 shrink-0">Prompt Content</Label>
-              <DroppableTextarea
-                textareaRef={textareaRef}
+              <Textarea
                 value={editorContent}
-                onChange={setEditorContent}
-                onBlur={handleTextareaBlur}
+                onChange={(e) => setEditorContent(e.target.value)}
+                className="h-full font-mono text-sm resize-none flex-1"
+                placeholder="Enter your prompt here. Use {{variable}} for interpolation."
               />
             </div>
           </div>
-
-          {/* Right: Variables Panel */}
-          <div className="w-96 border-l border-border bg-muted/30 flex flex-col shrink-0 overflow-hidden min-h-0">
-            <div className="p-4 border-b bg-background">
-              <div className="flex items-center justify-between">
-                <h2 className="font-semibold">Variables</h2>
-                <div className="flex items-center gap-2">
-                  {Object.keys(variableUsageCounts).length > 0 && (
-                    <Badge variant="default" className="bg-green-600">
-                      {Object.keys(variableUsageCounts).length} used
-                    </Badge>
-                  )}
-                  <Badge variant="outline">
-                    {availableVariables.length} available
-                  </Badge>
-                </div>
-              </div>
-              <p className="text-xs text-muted-foreground mt-1">
-                Click or drag to insert into prompt
-              </p>
-            </div>
-
-            <ScrollArea className="flex-1 min-h-0">
-              <div className="p-4 space-y-2">
-                {Object.entries(variablesByCategory).map(([category, categoryVars]) => {
-                  const isCollapsed = collapsedCategories.has(category);
-
-                  return (
-                    <Collapsible
-                      key={category}
-                      open={!isCollapsed}
-                      onOpenChange={() => toggleCategoryCollapse(category)}
-                    >
-                      <CollapsibleTrigger className="flex items-center gap-2 w-full px-2 py-2 hover:bg-muted rounded-lg text-left">
-                        {isCollapsed ? (
-                          <ChevronRight className="h-4 w-4 text-muted-foreground shrink-0" />
-                        ) : (
-                          <ChevronDown className="h-4 w-4 text-muted-foreground shrink-0" />
-                        )}
-                        <span className="font-medium capitalize text-sm">
-                          {category.replace(/_/g, " ")}
-                        </span>
-                        <span className="text-xs text-muted-foreground ml-auto">
-                          {categoryVars.length}
-                        </span>
-                      </CollapsibleTrigger>
-                      <CollapsibleContent className="space-y-1 mt-1 ml-6">
-                        {categoryVars.map((variable) => {
-                          const useCount = variableUsageCounts[variable.variable_name] || 0;
-                          return (
-                            <DraggableVariable
-                              key={variable.id}
-                              variable={variable}
-                              onInsert={() => insertVariableAtCursor(variable.variable_name)}
-                              isUsed={useCount > 0}
-                              useCount={useCount}
-                            />
-                          );
-                        })}
-                      </CollapsibleContent>
-                    </Collapsible>
-                  );
-                })}
-              </div>
-            </ScrollArea>
-          </div>
         </div>
-
-        {/* Drag Overlay */}
-        <DragOverlay>
-          {activeDragVariable && (
-            <div className="bg-background border rounded-lg p-2 shadow-lg">
-              <code className="text-sm bg-primary/20 text-primary px-2 py-1 rounded font-mono">
-                {`{{${activeDragVariable.variable_name}}}`}
-              </code>
-            </div>
-          )}
-        </DragOverlay>
       </div>
-    </DndContext>
+    </>
   );
 }

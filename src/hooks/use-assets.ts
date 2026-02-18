@@ -9,8 +9,10 @@ import type {
   AssetStatus,
   LockStatus,
 } from "@/lib/types";
-import { projectKeys } from "./use-projects";
 import { deliverableKeys } from "./use-deliverables";
+
+// Query key for project cache invalidation (was in deleted use-projects.ts)
+const projectKeys = { all: ["projects"] as const };
 
 // Query key factory for assets
 export const assetKeys = {
