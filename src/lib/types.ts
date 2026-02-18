@@ -6,40 +6,6 @@ export interface User {
   created_at: string;
 }
 
-// Content Session types
-export type SessionStatus =
-  | "brain_dump"
-  | "research"
-  | "outline"
-  | "draft"
-  | "review"
-  | "outputs"
-  | "completed";
-
-export interface ContentSession {
-  id: string;
-  user_id: string;
-  status: SessionStatus;
-  title?: string;
-  created_at: string;
-  updated_at: string;
-}
-
-
-export interface OutlineData {
-  title: string;
-  summary: string;
-  sections: OutlineSection[];
-  estimated_word_count?: number;
-}
-
-export interface OutlineSection {
-  heading: string;
-  key_points: string[];
-  suggested_sources?: string[];
-}
-
-
 // Prompt Management types
 export type PromptStatus = "draft" | "active" | "archived";
 
