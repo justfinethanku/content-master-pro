@@ -25,44 +25,6 @@ export interface ContentSession {
   updated_at: string;
 }
 
-export interface BrainDump {
-  id: string;
-  session_id: string;
-  raw_content: string;
-  extracted_themes?: ExtractedThemes;
-  created_at: string;
-}
-
-export interface ExtractedThemes {
-  themes: string[];
-  topics: string[];
-  potential_angles: string[];
-  key_points: string[];
-}
-
-export interface ContentResearch {
-  id: string;
-  session_id: string;
-  query: string;
-  response: string;
-  sources: ResearchSource[];
-  created_at: string;
-}
-
-export interface ResearchSource {
-  title: string;
-  url: string;
-  snippet?: string;
-}
-
-export interface ContentOutline {
-  id: string;
-  session_id: string;
-  outline_json: OutlineData;
-  selected: boolean;
-  user_feedback?: string;
-  created_at: string;
-}
 
 export interface OutlineData {
   title: string;
@@ -77,42 +39,6 @@ export interface OutlineSection {
   suggested_sources?: string[];
 }
 
-export interface ContentDraft {
-  id: string;
-  session_id: string;
-  content: string;
-  voice_score?: VoiceScore;
-  version: number;
-  created_at: string;
-}
-
-export interface VoiceScore {
-  overall: number;
-  profanity_count: number;
-  corporate_speak_warnings: string[];
-  rhythm_analysis?: string;
-}
-
-export interface ContentOutput {
-  id: string;
-  session_id: string;
-  output_type: OutputType;
-  content: string;
-  metadata?: Record<string, unknown>;
-  created_at: string;
-}
-
-export type OutputType =
-  | "substack_post"
-  | "substack_image"
-  | "youtube_script"
-  | "youtube_description"
-  | "youtube_thumbnail"
-  | "tiktok_15s"
-  | "tiktok_30s"
-  | "tiktok_60s"
-  | "shorts_script"
-  | "reels_script";
 
 // Prompt Management types
 export type PromptStatus = "draft" | "active" | "archived";
@@ -192,15 +118,6 @@ export interface SyncManifest {
   error_message?: string;
 }
 
-// Voice Guidelines
-export interface VoiceGuidelines {
-  id: string;
-  name: string;
-  content: string;
-  is_active: boolean;
-  created_at: string;
-  updated_at: string;
-}
 
 // Pinecone Namespace Management
 export type NamespaceSourceType = "newsletter" | "documentation" | "research" | "ideas";
@@ -228,203 +145,6 @@ export interface PineconeNamespaceInsert {
   sort_order?: number;
 }
 
-export interface PineconeNamespaceUpdate {
-  slug?: string;
-  display_name?: string;
-  description?: string;
-  source_type?: NamespaceSourceType;
-  is_active?: boolean;
-  is_searchable?: boolean;
-  sort_order?: number;
-}
-
-// ============================================================================
-// Partner API Types
-// ============================================================================
-
-// Invite status
-export type PartnerInviteStatus = "pending" | "redeemed" | "expired" | "revoked";
-
-export interface PartnerInvite {
-  id: string;
-  code: string;
-  email: string;
-  created_by: string;
-  expires_at: string;
-  redeemed_at?: string;
-  redeemed_by?: string;
-  status: PartnerInviteStatus;
-  metadata?: Record<string, unknown>;
-  created_at: string;
-  updated_at: string;
-}
-
-export interface PartnerInviteInsert {
-  code: string;
-  email: string;
-  created_by: string;
-  expires_at?: string;
-  metadata?: Record<string, unknown>;
-}
-
-// Partner status
-export type PartnerStatus = "active" | "suspended" | "revoked";
-
-export interface Partner {
-  id: string;
-  user_id: string;
-  organization_name: string;
-  contact_email: string;
-  status: PartnerStatus;
-  rate_limit_per_minute: number;
-  rate_limit_per_day: number;
-  invite_id?: string;
-  metadata?: Record<string, unknown>;
-  created_at: string;
-  updated_at: string;
-}
-
-export interface PartnerInsert {
-  user_id: string;
-  organization_name: string;
-  contact_email: string;
-  status?: PartnerStatus;
-  rate_limit_per_minute?: number;
-  rate_limit_per_day?: number;
-  invite_id?: string;
-  metadata?: Record<string, unknown>;
-}
-
-export interface PartnerUpdate {
-  organization_name?: string;
-  contact_email?: string;
-  status?: PartnerStatus;
-  rate_limit_per_minute?: number;
-  rate_limit_per_day?: number;
-  metadata?: Record<string, unknown>;
-}
-
-// Namespace permissions
-export interface PartnerNamespacePermission {
-  id: string;
-  partner_id: string;
-  namespace_id: string;
-  can_read: boolean;
-  can_write: boolean;
-  created_at: string;
-  updated_at: string;
-}
-
-export interface PartnerNamespacePermissionWithNamespace
-  extends PartnerNamespacePermission {
-  pinecone_namespaces: PineconeNamespace;
-}
-
-// API Key status
-export type ApiKeyStatus = "active" | "revoked";
-
-export interface PartnerApiKey {
-  id: string;
-  partner_id: string;
-  key_hash: string;
-  key_prefix: string;
-  name: string;
-  last_used_at?: string;
-  status: ApiKeyStatus;
-  expires_at?: string;
-  metadata?: Record<string, unknown>;
-  created_at: string;
-  updated_at: string;
-}
-
-export interface PartnerApiKeyInsert {
-  partner_id: string;
-  key_hash: string;
-  key_prefix: string;
-  name: string;
-  expires_at?: string;
-  metadata?: Record<string, unknown>;
-}
-
-// API Usage logging
-export interface PartnerApiUsage {
-  id: string;
-  api_key_id: string;
-  partner_id: string;
-  endpoint: string;
-  method: string;
-  namespace_slug?: string;
-  query_params?: Record<string, unknown>;
-  status_code: number;
-  response_time_ms?: number;
-  error_message?: string;
-  ip_address?: string;
-  user_agent?: string;
-  created_at: string;
-}
-
-export interface PartnerApiUsageInsert {
-  api_key_id: string;
-  partner_id: string;
-  endpoint: string;
-  method: string;
-  namespace_slug?: string;
-  query_params?: Record<string, unknown>;
-  status_code: number;
-  response_time_ms?: number;
-  error_message?: string;
-  ip_address?: string;
-  user_agent?: string;
-}
-
-// API response types
-export interface PartnerAuthContext {
-  partner: Partner;
-  apiKey: PartnerApiKey;
-  permissions: PartnerNamespacePermissionWithNamespace[];
-}
-
-export interface RateLimitInfo {
-  limit: number;
-  remaining: number;
-  resetAt: string;
-  dailyLimit: number;
-  dailyRemaining: number;
-  dailyResetAt: string;
-}
-
-export interface PartnerSearchRequest {
-  query: string;
-  namespaces?: string[];
-  topK?: number;
-}
-
-export interface PartnerSearchResponse {
-  results: SearchResult[];
-  query: string;
-  namespaces: string[];
-  count: number;
-  rateLimit: RateLimitInfo;
-}
-
-export interface SearchResult {
-  id: string;
-  score: number;
-  title?: string;
-  content?: string;
-  source?: string;
-  url?: string;
-  metadata?: Record<string, unknown>;
-}
-
-export interface PartnerNamespaceResponse {
-  slug: string;
-  display_name: string;
-  description?: string;
-  source_type?: NamespaceSourceType;
-  can_read: boolean;
-  can_write: boolean;
-}
 
 // ============================================================================
 // Ideas Capture Types
@@ -463,22 +183,6 @@ export interface IdeaCluster {
   updated_at: string;
 }
 
-export interface IdeaClusterInsert {
-  user_id: string;
-  name: string;
-  description?: string;
-  representative_embedding?: string;
-  is_active?: boolean;
-  idea_count?: number;
-}
-
-export interface IdeaClusterUpdate {
-  name?: string;
-  description?: string;
-  representative_embedding?: string;
-  is_active?: boolean;
-  idea_count?: number;
-}
 
 // Slack Idea - captured idea from any source
 export interface SlackIdea {
@@ -525,120 +229,6 @@ export interface SlackIdea {
   updated_at: string;
 }
 
-export interface SlackIdeaInsert {
-  user_id: string;
-  raw_content: string;
-  source_type: IdeaSourceType;
-  source_url?: string;
-  slack_message_id?: string;
-  slack_channel_id?: string;
-  slack_timestamp?: string;
-  slack_user_id?: string;
-  recording_id?: string;
-  status?: IdeaStatus;
-  captured_at?: string;
-}
-
-export interface SlackIdeaUpdate {
-  raw_content?: string;
-  summary?: string;
-  extracted_topics?: string[];
-  idea_type?: IdeaType;
-  potential_angles?: string[];
-  embedding_id?: string;
-  cluster_id?: string;
-  cluster_confidence?: number;
-  status?: IdeaStatus;
-  content_session_id?: string;
-  pinecone_indexed?: boolean;
-  pinecone_indexed_at?: string;
-  pinecone_error?: string;
-  processed_at?: string;
-}
-
-// AI Processing result for ideas
-export interface IdeaSummaryResult {
-  summary: string;
-  topics: string[];
-  type: IdeaType;
-  potential_angles: string[];
-}
-
-// Cluster naming result
-export interface ClusterNameResult {
-  name: string;
-  description: string;
-}
-
-// Slack Integration Config
-export type SlackSyncStatus = "idle" | "syncing" | "error";
-
-export interface SlackIntegrationConfig {
-  id: string;
-  user_id: string;
-  access_token: string;
-  refresh_token?: string;
-  token_expires_at?: string;
-  bot_user_id?: string;
-  team_id: string;
-  team_name?: string;
-  channel_id: string;
-  channel_name: string;
-  last_sync_at?: string;
-  last_message_ts?: string;
-  sync_status: SlackSyncStatus;
-  sync_error?: string;
-  messages_synced: number;
-  is_active: boolean;
-  sync_frequency_minutes: number;
-  auto_process: boolean;
-  created_at: string;
-  updated_at: string;
-}
-
-export interface SlackIntegrationConfigInsert {
-  user_id: string;
-  access_token: string;
-  refresh_token?: string;
-  token_expires_at?: string;
-  bot_user_id?: string;
-  team_id: string;
-  team_name?: string;
-  channel_id: string;
-  channel_name?: string;
-  is_active?: boolean;
-  sync_frequency_minutes?: number;
-  auto_process?: boolean;
-}
-
-export interface SlackIntegrationConfigUpdate {
-  access_token?: string;
-  refresh_token?: string;
-  token_expires_at?: string;
-  channel_id?: string;
-  channel_name?: string;
-  last_sync_at?: string;
-  last_message_ts?: string;
-  sync_status?: SlackSyncStatus;
-  sync_error?: string;
-  messages_synced?: number;
-  is_active?: boolean;
-  sync_frequency_minutes?: number;
-  auto_process?: boolean;
-}
-
-// Idea vector metadata for Pinecone
-export interface IdeaVectorMetadata {
-  idea_id: string;
-  user_id: string;
-  summary: string;
-  topics: string[];
-  source_type: IdeaSourceType;
-  cluster_id?: string;
-  created_at: string;
-  content_preview: string;
-  [key: string]: string | string[] | undefined; // Index signature for Pinecone
-}
 
 // ============================================================================
 // Content Calendar & Project Management Types (NEW — matches projects + project_assets tables)
@@ -691,13 +281,6 @@ export interface ProjectInsert {
   created_by: string;
 }
 
-export interface ProjectUpdate {
-  project_id?: string;
-  name?: string;
-  scheduled_date?: string | null;
-  status?: ProjectStatus;
-  metadata?: Record<string, unknown>;
-}
 
 // ProjectAsset — individual deliverables within a project
 export interface ProjectAsset {
@@ -758,22 +341,6 @@ export interface LockStatus {
   isLockedByCurrentUser: boolean;
 }
 
-// ============================================================================
-// LEGACY types (commented out — kept for reference during rebuild)
-// ============================================================================
-// export type OldAssetType =
-//   | "post" | "transcript_youtube" | "transcript_tiktok"
-//   | "description_youtube" | "description_tiktok" | "prompts"
-//   | "guide" | "post_linkedin" | "post_substack" | "image_substack";
-// export interface ContentProject { ... }
-// export interface ContentProjectWithSummary extends ContentProject { ... }
-// export interface ContentProjectInsert { ... }
-// export interface ContentProjectUpdate { ... }
-// export interface AssetVersion { ... }
-// export interface AssetVersionInsert { ... }
-// export interface ProjectPublication { ... }
-// export interface ProjectPublicationInsert { ... }
-// export interface ProjectPublicationUpdate { ... }
 
 // ============================================================================
 // Content Routing System Types
@@ -1316,6 +883,7 @@ export interface EvergreenQueueWithDetails extends EvergreenQueueEntry {
   project_routing?: ProjectRoutingWithProject;
 }
 
+
 // Routing Status Log types
 export interface RoutingStatusLog {
   id: string;
@@ -1343,7 +911,7 @@ export interface RoutingStatusLogInsert {
 export interface RoutingDashboardStats {
   ideas_by_status: Record<IdeaRoutingStatus, number>;
   ideas_by_tier: Record<TierSlug, number>;
-  evergreen_queue_counts: Record<string, number>; // by publication slug
+  evergreen_queue_counts: Record<string, number>;
   scheduled_this_week: number;
   alerts: RoutingAlert[];
 }
@@ -1408,13 +976,6 @@ export type RoadmapCommentInsert = Pick<
   "item_id" | "content"
 > &
   Partial<Pick<RoadmapComment, "user_id">>;
-
-export interface RoadmapVote {
-  id: string;
-  item_id: string;
-  user_id: string;
-  created_at: string;
-}
 
 export interface RoadmapCommentWithUser extends RoadmapComment {
   profiles: { email: string | null; display_name: string | null } | null;
