@@ -28,7 +28,12 @@ export interface GenerateOptions {
     max_tokens?: number;
     /** Include/exclude specific guidelines */
     guideline_overrides?: Record<string, boolean>;
+    /** Override aspect ratio for image generation */
+    aspect_ratio?: string;
   };
+
+  /** Base64-encoded reference image for image generation models that support it */
+  reference_image?: string;
 
   /** Enable SSE streaming (text models only) */
   stream?: boolean;
@@ -48,6 +53,7 @@ export interface GenerateResult {
     base64: string;
     media_type: string;
     storage_url?: string;
+    storage_failed?: boolean;
   };
 
   /** Citations (for research models like Perplexity) */
