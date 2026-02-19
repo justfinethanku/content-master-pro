@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -31,6 +31,11 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
 import { Switch } from "@/components/ui/switch";
 import {
+  Collapsible,
+  CollapsibleTrigger,
+  CollapsibleContent,
+} from "@/components/ui/collapsible";
+import {
   Cpu,
   Save,
   Loader2,
@@ -50,6 +55,10 @@ import {
   FileInput,
   Sparkles,
   Database,
+  Star,
+  ChevronRight,
+  ChevronDown,
+  ChevronsUpDown,
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 
@@ -107,6 +116,53 @@ export default function ModelsPage() {
   const [isSyncing, setIsSyncing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [syncReport, setSyncReport] = useState<SyncReport | null>(null);
+
+  // Collapsible provider group state (persisted in localStorage)
+  const [pinnedProviders, setPinnedProviders] = useState<Set<string>>(() => {
+    if (typeof window === "undefined") return new Set();
+    try {
+      const stored = localStorage.getItem("cmp:models:pinned");
+      return stored ? new Set(JSON.parse(stored) as string[]) : new Set();
+    } catch {
+      return new Set();
+    }
+  });
+  const [expandedProviders, setExpandedProviders] = useState<Set<string>>(() => {
+    if (typeof window === "undefined") return new Set();
+    try {
+      const stored = localStorage.getItem("cmp:models:expanded");
+      return stored ? new Set(JSON.parse(stored) as string[]) : new Set();
+    } catch {
+      return new Set();
+    }
+  });
+
+  // Persist pinned/expanded to localStorage
+  useEffect(() => {
+    localStorage.setItem("cmp:models:pinned", JSON.stringify([...pinnedProviders]));
+  }, [pinnedProviders]);
+  useEffect(() => {
+    localStorage.setItem("cmp:models:expanded", JSON.stringify([...expandedProviders]));
+  }, [expandedProviders]);
+
+  const togglePin = (provider: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setPinnedProviders((prev) => {
+      const next = new Set(prev);
+      if (next.has(provider)) next.delete(provider);
+      else next.add(provider);
+      return next;
+    });
+  };
+
+  const toggleExpanded = (provider: string) => {
+    setExpandedProviders((prev) => {
+      const next = new Set(prev);
+      if (next.has(provider)) next.delete(provider);
+      else next.add(provider);
+      return next;
+    });
+  };
 
   // Editor state
   const [editingModel, setEditingModel] = useState<AIModel | null>(null);
@@ -352,6 +408,27 @@ export default function ModelsPage() {
     {} as Record<string, AIModel[]>
   );
 
+  // Sorted provider list: pinned first (alpha), then unpinned (alpha)
+  const sortedProviders = useMemo(() => {
+    return Object.keys(modelsByProvider).sort((a, b) => {
+      const aPinned = pinnedProviders.has(a);
+      const bPinned = pinnedProviders.has(b);
+      if (aPinned && !bPinned) return -1;
+      if (!aPinned && bPinned) return 1;
+      return a.localeCompare(b);
+    });
+  }, [modelsByProvider, pinnedProviders]);
+
+  const allExpanded = sortedProviders.length > 0 && sortedProviders.every((p) => expandedProviders.has(p));
+
+  const toggleAllExpanded = () => {
+    if (allExpanded) {
+      setExpandedProviders(new Set());
+    } else {
+      setExpandedProviders(new Set(sortedProviders));
+    }
+  };
+
   const availableCount = models.filter((m) => m.is_available).length;
 
   if (isLoading) {
@@ -366,9 +443,14 @@ export default function ModelsPage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <p className="text-sm text-muted-foreground">
-          {models.length} models synced · {availableCount} enabled
+          {models.length} models synced · {availableCount} enabled · {sortedProviders.length} providers
         </p>
-        <Button variant="outline" onClick={syncModels} disabled={isSyncing}>
+        <div className="flex items-center gap-2">
+          <Button variant="ghost" size="sm" onClick={toggleAllExpanded}>
+            <ChevronsUpDown className="mr-1.5 h-4 w-4" />
+            {allExpanded ? "Collapse All" : "Expand All"}
+          </Button>
+          <Button variant="outline" onClick={syncModels} disabled={isSyncing}>
           {isSyncing ? (
             <>
               <Loader2 className="mr-2 h-4 w-4 animate-spin" />
@@ -381,6 +463,7 @@ export default function ModelsPage() {
             </>
           )}
         </Button>
+        </div>
       </div>
 
       {syncReport && (
@@ -403,129 +486,166 @@ export default function ModelsPage() {
         </div>
       )}
 
-      {Object.entries(modelsByProvider)
-        .sort(([a], [b]) => a.localeCompare(b))
-        .map(([provider, providerModels]) => (
-          <div key={provider} className="space-y-3">
-            <h2 className="text-lg font-semibold capitalize">
-              {provider}{" "}
-              <span className="text-sm font-normal text-muted-foreground">
-                ({providerModels.length})
-              </span>
-            </h2>
-            <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-              {providerModels.map((model) => (
-                <Card
-                  key={model.id}
-                  className={`cursor-pointer hover:border-primary/50 transition-colors ${
-                    !model.is_available ? "opacity-50" : ""
-                  }`}
-                  onClick={() => openEditor(model)}
+      {sortedProviders.map((provider) => {
+        const providerModels = modelsByProvider[provider];
+        const enabledCount = providerModels.filter((m) => m.is_available).length;
+        const isPinned = pinnedProviders.has(provider);
+        const isExpanded = expandedProviders.has(provider);
+
+        return (
+          <Collapsible
+            key={provider}
+            open={isExpanded}
+            onOpenChange={() => toggleExpanded(provider)}
+          >
+            <CollapsibleTrigger asChild>
+              <button className="flex w-full items-center gap-3 rounded-lg border border-border bg-muted/30 px-4 py-3 text-left transition-colors hover:bg-muted/60">
+                <span
+                  role="button"
+                  tabIndex={0}
+                  onClick={(e) => togglePin(provider, e)}
+                  onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); togglePin(provider, e as unknown as React.MouseEvent); } }}
+                  className="shrink-0 text-muted-foreground hover:text-yellow-500 transition-colors"
+                  aria-label={isPinned ? `Unpin ${provider}` : `Pin ${provider}`}
                 >
-                  <CardHeader className="pb-2">
-                    <div className="flex items-start justify-between gap-2">
-                      <div className="flex-1 min-w-0">
-                        <CardTitle className="text-base flex items-center gap-2">
-                          {getTypeIcon(model.model_type)}
-                          <span className="truncate">
-                            {model.display_name}
-                          </span>
-                        </CardTitle>
-                        <CardDescription className="mt-1 text-xs truncate">
-                          {model.model_id}
-                        </CardDescription>
-                      </div>
-                      <div className="flex items-center gap-2 shrink-0">
-                        <Badge
-                          variant="outline"
-                          className={getTypeColor(model.model_type)}
-                        >
-                          {model.model_type.toUpperCase()}
-                        </Badge>
-                        <div onClick={(e) => toggleAvailability(model, e)}>
-                          <Switch
-                            checked={model.is_available}
-                            aria-label={`Toggle ${model.display_name} availability`}
-                          />
+                  <Star
+                    className={`h-4 w-4 ${isPinned ? "fill-yellow-500 text-yellow-500" : ""}`}
+                  />
+                </span>
+                <span className="text-base font-semibold capitalize flex-1">
+                  {provider}
+                </span>
+                <span className="text-sm text-muted-foreground">
+                  {providerModels.length} model{providerModels.length !== 1 ? "s" : ""}
+                  {enabledCount > 0 && (
+                    <span className="ml-1.5 text-primary">
+                      · {enabledCount} enabled
+                    </span>
+                  )}
+                </span>
+                {isExpanded ? (
+                  <ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground" />
+                ) : (
+                  <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" />
+                )}
+              </button>
+            </CollapsibleTrigger>
+            <CollapsibleContent>
+              <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3 pt-3">
+                {providerModels.map((model) => (
+                  <Card
+                    key={model.id}
+                    className={`cursor-pointer hover:border-primary/50 transition-colors ${
+                      !model.is_available ? "opacity-50" : ""
+                    }`}
+                    onClick={() => openEditor(model)}
+                  >
+                    <CardHeader className="pb-2">
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="flex-1 min-w-0">
+                          <CardTitle className="text-base flex items-center gap-2">
+                            {getTypeIcon(model.model_type)}
+                            <span className="truncate">
+                              {model.display_name}
+                            </span>
+                          </CardTitle>
+                          <CardDescription className="mt-1 text-xs truncate">
+                            {model.model_id}
+                          </CardDescription>
+                        </div>
+                        <div className="flex items-center gap-2 shrink-0">
+                          <Badge
+                            variant="outline"
+                            className={getTypeColor(model.model_type)}
+                          >
+                            {model.model_type.toUpperCase()}
+                          </Badge>
+                          <div onClick={(e) => toggleAvailability(model, e)}>
+                            <Switch
+                              checked={model.is_available}
+                              aria-label={`Toggle ${model.display_name} availability`}
+                            />
+                          </div>
                         </div>
                       </div>
-                    </div>
-                  </CardHeader>
-                  <CardContent className="space-y-2">
-                    {/* Description */}
-                    {model.description && (
-                      <p className="text-xs text-muted-foreground line-clamp-2">
-                        {model.description}
-                      </p>
-                    )}
-
-                    {/* Pricing */}
-                    {formatPricing(model.pricing) && (
-                      <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                        <DollarSign className="h-3 w-3 shrink-0" />
-                        <span className="truncate">
-                          {formatPricing(model.pricing)}
-                        </span>
-                      </div>
-                    )}
-
-                    {/* Tags */}
-                    {model.tags && model.tags.length > 0 && (
-                      <div className="flex flex-wrap gap-1">
-                        {model.tags.map((tag) => (
-                          <Badge
-                            key={tag}
-                            variant="secondary"
-                            className="text-[10px] px-1.5 py-0 h-5 gap-1"
-                          >
-                            {getTagIcon(tag)}
-                            {tag}
-                          </Badge>
-                        ))}
-                      </div>
-                    )}
-
-                    {/* Specs row */}
-                    <div className="flex items-center gap-3 text-xs text-muted-foreground pt-1">
-                      {model.context_window && (
-                        <span>{formatNumber(model.context_window)} ctx</span>
+                    </CardHeader>
+                    <CardContent className="space-y-2">
+                      {/* Description */}
+                      {model.description && (
+                        <p className="text-xs text-muted-foreground line-clamp-2">
+                          {model.description}
+                        </p>
                       )}
-                      {model.max_output_tokens && (
-                        <span>
-                          {formatNumber(model.max_output_tokens)} out
-                        </span>
+
+                      {/* Pricing */}
+                      {formatPricing(model.pricing) && (
+                        <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                          <DollarSign className="h-3 w-3 shrink-0" />
+                          <span className="truncate">
+                            {formatPricing(model.pricing)}
+                          </span>
+                        </div>
                       )}
-                      <div className="flex items-center gap-1 ml-auto">
-                        {model.supports_streaming && (
-                          <Badge
-                            variant="secondary"
-                            className="text-[10px] px-1"
-                          >
-                            <Zap className="h-2.5 w-2.5" />
-                          </Badge>
+
+                      {/* Tags */}
+                      {model.tags && model.tags.length > 0 && (
+                        <div className="flex flex-wrap gap-1">
+                          {model.tags.map((tag) => (
+                            <Badge
+                              key={tag}
+                              variant="secondary"
+                              className="text-[10px] px-1.5 py-0 h-5 gap-1"
+                            >
+                              {getTagIcon(tag)}
+                              {tag}
+                            </Badge>
+                          ))}
+                        </div>
+                      )}
+
+                      {/* Specs row */}
+                      <div className="flex items-center gap-3 text-xs text-muted-foreground pt-1">
+                        {model.context_window && (
+                          <span>{formatNumber(model.context_window)} ctx</span>
                         )}
-                        {formatDate(model.released_at) && (
-                          <span className="flex items-center gap-1 text-[10px]">
-                            <Calendar className="h-2.5 w-2.5" />
-                            {formatDate(model.released_at)}
+                        {model.max_output_tokens && (
+                          <span>
+                            {formatNumber(model.max_output_tokens)} out
                           </span>
                         )}
+                        <div className="flex items-center gap-1 ml-auto">
+                          {model.supports_streaming && (
+                            <Badge
+                              variant="secondary"
+                              className="text-[10px] px-1"
+                            >
+                              <Zap className="h-2.5 w-2.5" />
+                            </Badge>
+                          )}
+                          {formatDate(model.released_at) && (
+                            <span className="flex items-center gap-1 text-[10px]">
+                              <Calendar className="h-2.5 w-2.5" />
+                              {formatDate(model.released_at)}
+                            </span>
+                          )}
+                        </div>
                       </div>
-                    </div>
 
-                    {/* Manual config indicator */}
-                    {model.system_prompt_tips && (
-                      <div className="flex items-center gap-1 text-xs text-muted-foreground">
-                        <Info className="h-3 w-3" />
-                        <span className="truncate">Has prompting tips</span>
-                      </div>
-                    )}
-                  </CardContent>
-                </Card>
-              ))}
-            </div>
-          </div>
-        ))}
+                      {/* Manual config indicator */}
+                      {model.system_prompt_tips && (
+                        <div className="flex items-center gap-1 text-xs text-muted-foreground">
+                          <Info className="h-3 w-3" />
+                          <span className="truncate">Has prompting tips</span>
+                        </div>
+                      )}
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+            </CollapsibleContent>
+          </Collapsible>
+        );
+      })}
 
       {/* Editor Dialog — manual fields only */}
       <Dialog

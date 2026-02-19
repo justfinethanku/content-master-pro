@@ -1,10 +1,8 @@
 "use client";
 
-import { useState, useEffect } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
-import { createClient } from "@/lib/supabase/client";
 import { AlertTriangle } from "lucide-react";
 import {
   FileText,
@@ -19,8 +17,6 @@ import {
   Layers,
   CalendarClock,
 } from "lucide-react";
-
-const ADMIN_EMAIL = "jon@contentionmedia.com";
 
 const tabs = [
   { href: "/studio/prompts", label: "Prompts", icon: FileText },
@@ -42,14 +38,6 @@ export default function StudioLayout({
   children: React.ReactNode;
 }) {
   const pathname = usePathname();
-  const [isAdmin, setIsAdmin] = useState<boolean | null>(null);
-
-  useEffect(() => {
-    const supabase = createClient();
-    supabase.auth.getUser().then(({ data: { user } }) => {
-      setIsAdmin(user?.email === ADMIN_EMAIL);
-    });
-  }, []);
 
   return (
     <div className="space-y-6">
@@ -60,21 +48,19 @@ export default function StudioLayout({
         </p>
       </div>
 
-      {isAdmin === false && (
-        <div className="flex items-start gap-3 rounded-lg border border-amber-500/30 bg-amber-500/10 p-4">
-          <AlertTriangle className="h-5 w-5 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
-          <div>
-            <p className="text-sm font-medium text-amber-800 dark:text-amber-300">
-              Configuration Area
-            </p>
-            <p className="text-sm text-amber-700 dark:text-amber-400/80">
-              Studio controls how the platform works. Changes here affect AI
-              generation, prompts, and content routing. If you&apos;re not sure
-              what you&apos;re doing, please don&apos;t modify anything.
-            </p>
-          </div>
+      <div className="flex items-start gap-3 rounded-lg border border-amber-500/30 bg-amber-500/10 p-4">
+        <AlertTriangle className="h-5 w-5 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
+        <div>
+          <p className="text-sm font-medium text-amber-800 dark:text-amber-300">
+            Configuration Area
+          </p>
+          <p className="text-sm text-amber-700 dark:text-amber-400/80">
+            Studio controls how the platform works. Changes here affect AI
+            generation, prompts, and content routing. If you&apos;re not sure
+            what you&apos;re doing, please don&apos;t modify anything.
+          </p>
         </div>
-      )}
+      </div>
 
       <div className="border-b">
         <nav className="flex gap-1 -mb-px">
