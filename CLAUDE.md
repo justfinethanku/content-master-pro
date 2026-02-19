@@ -80,7 +80,9 @@ Client Component (useGenerate hook)
     ↓ fetch ${supabaseUrl}/functions/v1/generate
 Supabase Edge Function (supabase/functions/generate/)
     ↓ loads prompts, models, settings, guidelines from DB
-Vercel AI Gateway → AI Provider
+    ↓ text/research: REST → Vercel AI Gateway → Provider
+    ↓ image (BFL):    AI SDK generateImage() → Gateway → BFL
+    ↓ image (Gemini):  AI SDK generateImage() → Direct @ai-sdk/google → Google
 ```
 
 ### Supabase Client Pattern
@@ -107,7 +109,7 @@ const supabase = await createServiceClient();
 
 All AI generation goes through a **universal Supabase Edge Function**:
 ```
-useGenerate hook → Supabase Edge Function (generate) → Vercel AI Gateway → Provider
+useGenerate hook → Supabase Edge Function (generate) → AI Provider
 ```
 
 **Edge Function:** `supabase/functions/generate/index.ts` — One endpoint for text, image, and research generation. Loads prompt config, model config, destinations, and guidelines from the database, then routes to the appropriate handler.
@@ -125,15 +127,29 @@ useGenerate hook → Supabase Edge Function (generate) → Vercel AI Gateway →
 
 **Client-side hook:** `src/hooks/use-generate.ts` — `useGenerate()`, `useGenerateJSON<T>()`, `useResearch()`. Calls `${supabaseUrl}/functions/v1/generate` with auth token. Supports SSE streaming.
 
-**Vercel AI Gateway details:**
+**Image Generation (AI SDK):**
+Image generation uses the Vercel AI SDK's `generateImage()` (imported as `experimental_generateImage`). One unified function `callImageModelSDK()` handles all providers:
+- **BFL models** (FLUX Kontext Pro/Max): `gateway.image(modelId)` via Vercel AI Gateway
+- **Google Gemini** (`gemini-3-pro-image`): `google.image('gemini-3-pro-image-preview')` via direct `@ai-sdk/google` (v3.x)
+- **Reference images**: Passed via `prompt.images[]` (raw base64, no data URI prefix). Only sent when `imageConfig.supports_image_input` is `true` in the DB.
+- **Why Gemini needs direct provider**: The Gateway classifies Gemini as `modelType: "language"`, not `"image"`. The compatibility path works for text-to-image but doesn't reliably pass `prompt.images[]` for image editing. The direct provider gives first-class support.
+- **`@ai-sdk/google` must be v3+**: v2 routes Gemini to `:predict` (Imagen-only). v3 routes to `:generateContent`.
+- **Full reference**: `docs/vercel-docs/ai-sdk-image-generation.md`
+
+**Text & Research Generation (REST):**
 - **Text endpoint:** `https://ai-gateway.vercel.sh/v1/chat/completions`
-- **Image endpoint:** `https://ai-gateway.vercel.sh/v1/images/generations`
 - **Model ID format:** `provider/model-name` (e.g., `anthropic/claude-sonnet-4-5`)
 - **Response format:** OpenAI-compatible (`choices[0].message.content`, `usage.prompt_tokens`)
 - **Extended thinking:** `reasoning: { enabled: true, budget_tokens: N }` — temperature must be omitted
 - **Embeddings:** `text-embedding-3-large` (3072 dims) via `src/lib/ai/embeddings.ts` (separate from Edge Function)
 
 Models stored in `ai_models` table. Sync with `npx tsx scripts/sync-ai-models.ts`.
+
+**Integration Testing (Image):**
+```bash
+npx tsx test-images/run-test.ts    # Run image generation tests across all models
+```
+Bump `TEST_NUMBER` and `TEST_WORD` in the script for each run. Results saved to `test-images/test{N}/`.
 
 ### Pinecone (Vector Search)
 
@@ -194,6 +210,8 @@ Built by Kaleab. Pages exist at `/routing/*` and `/studio/routing-rules|scoring|
 | Pinecone search | `src/lib/pinecone/search.ts` | Multi-namespace semantic search |
 | Pinecone namespaces | `src/lib/pinecone/namespaces.ts` | DB-driven config with cache |
 | Content routing | `src/lib/routing/` | Rule engine, scorer, scheduler (hidden) |
+| AI SDK docs | `docs/vercel-docs/` | Provider reference docs (BFL, Google, Gateway, etc.) |
+| Image test script | `test-images/run-test.ts` | Integration test for image models with reference images |
 | Types | `src/lib/types.ts` | All TypeScript types |
 | Utils | `src/lib/utils.ts` | `cn()` for Tailwind class merging |
 
@@ -236,13 +254,13 @@ Every prompt editable through the web UI at `/studio/prompts`.
 ### Rule 5: Edge Function Architecture
 All AI calls go through the Supabase Edge Function (`supabase/functions/generate/`):
 ```
-Next.js (useGenerate) → Edge Function → Vercel AI Gateway → Provider
+Next.js (useGenerate) → Edge Function → AI Provider (Gateway or Direct)
 ```
 Each Edge Function must:
 1. Load settings from `app_settings` table
 2. Load prompt config from database
 3. Interpolate template variables (including guidelines and destinations)
-4. Call AI provider with configured model
+4. Call AI provider with configured model (text/research via Gateway REST, images via AI SDK `generateImage()`)
 5. Log the call to `ai_call_logs` and return structured response
 
 ### Rule 6: SSE Streaming
@@ -327,7 +345,8 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY # Supabase anon key
 SUPABASE_SERVICE_ROLE_KEY     # For server-side operations
 PINECONE_API_KEY              # Pinecone API key
 PINECONE_HOST                 # Pinecone index host
-VERCEL_AI_GATEWAY_API_KEY     # AI Gateway key
+VERCEL_AI_GATEWAY_API_KEY     # AI Gateway key (text, research, BFL image models)
+GOOGLE_GENERATIVE_AI_API_KEY  # Direct Google AI key (Gemini image generation)
 TEST_EMAIL                    # Test account email
 TEST_PASSWORD                 # Test account password
 ```
