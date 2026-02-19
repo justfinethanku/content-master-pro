@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback, useRef, useMemo, useEffect } from "react";
+import { useState, useCallback, useRef, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import {
@@ -21,6 +21,11 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+
+interface PromptModelConfig {
+  modelId: string;
+  imageConfig: ImageModel["image_config"];
+}
 import {
   Tooltip,
   TooltipContent,
@@ -136,7 +141,6 @@ export default function ThumbnailsPage() {
   // Form state
   const [prompt, setPrompt] = useState("");
   const [titleText, setTitleText] = useState("");
-  const [selectedModelId, setSelectedModelId] = useState<string>("");
   const [aspectRatio, setAspectRatio] = useState<string>("16:9");
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(
     null
@@ -155,31 +159,17 @@ export default function ThumbnailsPage() {
   // Data Queries
   // ============================================================================
 
-  const { data: models = [] } = useQuery({
-    queryKey: ["ai_models", "image"],
-    queryFn: async (): Promise<ImageModel[]> => {
-      const { data, error } = await supabase
-        .from("ai_models")
-        .select("model_id, display_name, provider, image_config")
-        .eq("model_type", "image")
-        .eq("is_available", true)
-        .order("provider")
-        .order("display_name");
-
-      if (error) throw error;
-      return (data || []) as ImageModel[];
-    },
-  });
-
-  // Load default model from Prompt Studio's image_generator config
-  const { data: promptDefault } = useQuery({
-    queryKey: ["prompt_config", "image_generator", "default_model"],
-    queryFn: async () => {
+  // Load model from Prompt Studio's image_generator config (single source of truth)
+  const { data: promptModelConfig } = useQuery({
+    queryKey: ["prompt_config", "image_generator", "model"],
+    queryFn: async (): Promise<PromptModelConfig | null> => {
       const { data, error } = await supabase
         .from("prompt_sets")
         .select(
           `prompt_versions!prompt_versions_prompt_set_id_fkey (
-            ai_models!prompt_versions_model_id_fkey ( model_id )
+            ai_models!prompt_versions_model_id_fkey (
+              model_id, display_name, provider, image_config
+            )
           )`
         )
         .eq("slug", "image_generator")
@@ -188,9 +178,12 @@ export default function ThumbnailsPage() {
 
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const version = (data?.prompt_versions as any)?.[0];
-      const modelId = version?.ai_models?.model_id ?? version?.ai_models?.[0]?.model_id;
-      if (error || !modelId) return null;
-      return { modelId: modelId as string };
+      const model = version?.ai_models?.[0] ?? version?.ai_models;
+      if (error || !model?.model_id) return null;
+      return {
+        modelId: model.model_id as string,
+        imageConfig: model.image_config as ImageModel["image_config"],
+      };
     },
   });
 
@@ -209,67 +202,21 @@ export default function ThumbnailsPage() {
   });
 
   // ============================================================================
-  // Derived State
+  // Derived State (model comes from Prompt Studio config)
   // ============================================================================
 
-  const selectedModel = useMemo(
-    () => models.find((m) => m.model_id === selectedModelId) || null,
-    [models, selectedModelId]
-  );
-
   const supportedAspectRatios = useMemo(() => {
-    if (!selectedModel?.image_config?.supported_aspect_ratios) {
-      return ["16:9", "1:1", "9:16"]; // Sensible fallback
-    }
-    return selectedModel.image_config.supported_aspect_ratios;
-  }, [selectedModel]);
+    const ratios = promptModelConfig?.imageConfig?.supported_aspect_ratios;
+    return ratios?.length ? ratios : ["16:9", "1:1", "9:16"];
+  }, [promptModelConfig]);
 
   const supportsImageInput =
-    selectedModel?.image_config?.supports_image_input ?? false;
-
-  // Models grouped by provider
-  const groupedModels = useMemo(() => {
-    const groups: Record<string, ImageModel[]> = {};
-    for (const model of models) {
-      const provider = model.provider || "other";
-      if (!groups[provider]) groups[provider] = [];
-      groups[provider].push(model);
-    }
-    return groups;
-  }, [models]);
-
-  // Auto-select default model: Prompt Studio config > first available
-  useEffect(() => {
-    if (models.length > 0 && !selectedModelId) {
-      const defaultId = promptDefault?.modelId;
-      const defaultExists = defaultId && models.some((m) => m.model_id === defaultId);
-      setSelectedModelId(defaultExists ? defaultId : models[0].model_id);
-    }
-  }, [models, selectedModelId, promptDefault]);
+    promptModelConfig?.imageConfig?.supports_image_input ?? false;
 
   // ============================================================================
   // Handlers
   // ============================================================================
 
-  const handleModelChange = useCallback(
-    (modelId: string) => {
-      setSelectedModelId(modelId);
-      // Reset aspect ratio to new model's default
-      const model = models.find((m) => m.model_id === modelId);
-      const defaultRatio =
-        model?.image_config?.default_aspect_ratio || "16:9";
-      const supported = model?.image_config?.supported_aspect_ratios || [];
-      if (supported.length > 0 && !supported.includes(aspectRatio)) {
-        setAspectRatio(defaultRatio);
-      }
-      // Clear reference image if new model doesn't support it
-      if (!model?.image_config?.supports_image_input) {
-        setReferenceImage(null);
-        setReferenceImageName("");
-      }
-    },
-    [models, aspectRatio]
-  );
 
   const processImageFile = useCallback(async (file: File) => {
     if (!file.type.startsWith("image/")) return;
@@ -307,7 +254,7 @@ export default function ThumbnailsPage() {
   );
 
   const handleGenerate = useCallback(async () => {
-    if (!prompt.trim() || !selectedModelId) return;
+    if (!prompt.trim()) return;
 
     setSaveSuccess(false);
 
@@ -321,21 +268,12 @@ export default function ThumbnailsPage() {
       prompt_slug: "image_generator",
       variables: { content: fullPrompt },
       overrides: {
-        model_id: selectedModelId,
         aspect_ratio: aspectRatio,
       },
       reference_image:
         referenceImage && supportsImageInput ? referenceImage : undefined,
     });
-  }, [
-    prompt,
-    titleText,
-    selectedModelId,
-    aspectRatio,
-    referenceImage,
-    supportsImageInput,
-    generate,
-  ]);
+  }, [prompt, titleText, aspectRatio, referenceImage, supportsImageInput, generate]);
 
   const handleSaveToProject = useCallback(async () => {
     if (!selectedProjectId || !result?.image?.storage_url) return;
@@ -543,66 +481,21 @@ export default function ThumbnailsPage() {
             </TooltipProvider>
           </div>
 
-          {/* Model + Aspect Ratio Row */}
-          <div className="grid gap-4 sm:grid-cols-2">
-            {/* Model Selector */}
-            <div className="space-y-2">
-              <Label>Model</Label>
-              <Select
-                value={selectedModelId}
-                onValueChange={handleModelChange}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Select a model" />
-                </SelectTrigger>
-                <SelectContent>
-                  {Object.entries(groupedModels).map(
-                    ([provider, providerModels]) => (
-                      <div key={provider}>
-                        <div className="px-2 py-1.5 text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-                          {provider}
-                        </div>
-                        {providerModels.map((model) => (
-                          <SelectItem
-                            key={model.model_id}
-                            value={model.model_id}
-                          >
-                            <span className="flex items-center gap-2">
-                              {model.display_name}
-                              {model.image_config?.supports_image_input && (
-                                <Badge
-                                  variant="secondary"
-                                  className="text-[10px] px-1 py-0"
-                                >
-                                  ref
-                                </Badge>
-                              )}
-                            </span>
-                          </SelectItem>
-                        ))}
-                      </div>
-                    )
-                  )}
-                </SelectContent>
-              </Select>
-            </div>
-
-            {/* Aspect Ratio Selector */}
-            <div className="space-y-2">
-              <Label>Aspect ratio</Label>
-              <Select value={aspectRatio} onValueChange={setAspectRatio}>
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {supportedAspectRatios.map((ratio) => (
-                    <SelectItem key={ratio} value={ratio}>
-                      {ASPECT_RATIO_LABELS[ratio] || ratio}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
+          {/* Aspect Ratio */}
+          <div className="space-y-2">
+            <Label>Aspect ratio</Label>
+            <Select value={aspectRatio} onValueChange={setAspectRatio}>
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {supportedAspectRatios.map((ratio: string) => (
+                  <SelectItem key={ratio} value={ratio}>
+                    {ASPECT_RATIO_LABELS[ratio] || ratio}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
 
           {/* Project Selector */}
@@ -634,7 +527,7 @@ export default function ThumbnailsPage() {
           {/* Generate Button */}
           <Button
             onClick={handleGenerate}
-            disabled={!prompt.trim() || !selectedModelId || isLoading}
+            disabled={!prompt.trim() || isLoading}
             className="w-full"
             size="lg"
           >
