@@ -71,3 +71,10 @@ __pycache__/
 # Claude agent skills and config
 .agents/
 .claude/
+
+# Test image outputs (generated images from integration tests)
+test-images/test*/
+test-images/reference-image/
+
+# Deno lock file (generated, not needed in repo)
+deno.lock

@@ -25,6 +25,8 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { decode as decodeBase64 } from "https://deno.land/std@0.168.0/encoding/base64.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { experimental_generateImage as generateImage, createGateway } from "npm:ai@^6.0.0";
+import { createGoogleGenerativeAI } from "npm:@ai-sdk/google@^3.0.0";
 import { corsHeaders, handleCors } from "../_shared/cors.ts";
 import { getSupabaseAdmin, getSupabaseClient, getAuthenticatedUser } from "../_shared/supabase.ts";
 import { loadActivePromptConfig, interpolateTemplate } from "../_shared/prompts.ts";
@@ -247,7 +249,7 @@ serve(async (req: Request) => {
         break;
 
       case "image":
-        result = await callImageModel({
+        result = await callImageModelSDK({
           modelId,
           prompt: userMessage,
           systemPrompt,
@@ -671,7 +673,16 @@ async function callTextModelStreaming(params: {
 /**
  * Call image model (DALL-E, Imagen, FLUX)
  */
-async function callImageModel(params: {
+/**
+ * Call image model via Vercel AI SDK's generateImage().
+ *
+ * Unified handler for ALL image providers (BFL, Google, OpenAI).
+ * The SDK handles provider-specific translation, polling (BFL), and
+ * reference image delivery (prompt.images) automatically.
+ *
+ * See: docs/vercel-docs/ai-sdk-image-generation.md
+ */
+async function callImageModelSDK(params: {
   modelId: string;
   prompt: string;
   systemPrompt: string;
@@ -686,91 +697,89 @@ async function callImageModel(params: {
     throw new Error("VERCEL_AI_GATEWAY_API_KEY not configured");
   }
 
-  // Combine system prompt and user prompt for image generation
+  // Combine system prompt and user prompt
   const fullPrompt = systemPrompt
     ? `${systemPrompt}\n\n${prompt}`
     : prompt;
 
-  // Build provider-specific options
-  const requestBody: Record<string, unknown> = {
-    model: modelId,
-    prompt: fullPrompt,
-    n: 1,
-    response_format: "b64_json",
-  };
-
-  // Handle dimension/size based on provider
   const effectiveAspectRatio = aspectRatio || imageConfig.default_aspect_ratio || "1:1";
 
-  switch (imageConfig.provider_options_key) {
-    case "google":
-      // Google uses aspect_ratio
-      requestBody.aspect_ratio = effectiveAspectRatio;
-      // Google Imagen models support reference images via providerOptions
-      // See: https://ai-sdk.dev/providers/ai-sdk-providers/google-generative-ai
-      if (referenceImage && imageConfig.supports_image_input) {
-        requestBody.providerOptions = {
-          google: {
-            referenceImages: [{
-              referenceImage: { bytesBase64Encoded: referenceImage },
-              referenceType: "STYLE",
-            }],
-          },
-        };
-      }
-      break;
-
-    case "openai":
-      // OpenAI uses size
-      const size = aspectRatioToOpenAISize(effectiveAspectRatio, imageConfig);
-      requestBody.size = size;
-      if (imageConfig.quality_options?.includes("hd")) {
-        requestBody.quality = "hd";
-      }
-      break;
-
-    case "bfl":
-      // BFL uses width/height
-      const dims = aspectRatioToDimensions(effectiveAspectRatio, imageConfig);
-      requestBody.width = dims.width;
-      requestBody.height = dims.height;
-      // FLUX Kontext models support reference image via providerOptions
-      // See: https://ai-sdk.dev/providers/ai-sdk-providers/black-forest-labs
-      if (referenceImage && imageConfig.supports_image_input) {
-        requestBody.providerOptions = {
-          blackForestLabs: {
-            imagePrompt: referenceImage,
-          },
-        };
-      }
-      break;
+  // Build the prompt — string for text-to-image, object for image-to-image
+  let sdkPrompt: string | { text: string; images: string[] };
+  if (referenceImage && imageConfig.supports_image_input) {
+    sdkPrompt = {
+      text: fullPrompt,
+      images: [referenceImage], // raw base64 — SDK handles encoding per provider
+    };
+    console.log(`[generate] Reference image attached via prompt.images (${Math.round(referenceImage.length * 3 / 4 / 1024)}KB)`);
+  } else {
+    sdkPrompt = fullPrompt;
   }
 
-  const response = await fetch("https://ai-gateway.vercel.sh/v1/images/generations", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${gatewayApiKey}`,
-    },
-    body: JSON.stringify(requestBody),
+  // Build provider-specific options
+  const providerOptions: Record<string, Record<string, unknown>> = {};
+
+  // Choose model instance: Google Gemini uses direct provider (first-class image editing),
+  // everything else goes through the Vercel AI Gateway.
+  let modelInstance;
+
+  if (imageConfig.provider_options_key === "google") {
+    // Direct Google provider — Gemini image models are multimodal LLMs, not native
+    // gateway image models. The direct provider handles prompt.images correctly.
+    const googleApiKey = Deno.env.get("GOOGLE_GENERATIVE_AI_API_KEY");
+    if (!googleApiKey) {
+      throw new Error("GOOGLE_GENERATIVE_AI_API_KEY not configured");
+    }
+    const google = createGoogleGenerativeAI({ apiKey: googleApiKey });
+    // Gateway ID: "google/gemini-3-pro-image" → Direct provider ID: "gemini-3-pro-image-preview"
+    const googleModelId = modelId.replace("google/", "") + "-preview";
+    modelInstance = google.image(googleModelId);
+    console.log(`[generate] Using direct Google provider: ${googleModelId}`);
+  } else {
+    // Gateway for BFL, OpenAI, etc. — native image models
+    const gateway = createGateway({ apiKey: gatewayApiKey });
+    modelInstance = gateway.image(modelId);
+    console.log(`[generate] Using AI Gateway: ${modelId}`);
+  }
+
+  switch (imageConfig.provider_options_key) {
+    case "bfl": {
+      const dims = aspectRatioToBflDimensions(effectiveAspectRatio, imageConfig, modelId);
+      providerOptions.blackForestLabs = {
+        width: dims.width,
+        height: dims.height,
+      };
+      console.log(`[generate] BFL dimensions for ${modelId}: ${dims.width}x${dims.height} (${(dims.width * dims.height / 1_000_000).toFixed(2)}MP)`);
+      break;
+    }
+    case "openai": {
+      if (imageConfig.quality_options?.includes("hd")) {
+        providerOptions.openai = { quality: "hd" };
+      }
+      break;
+    }
+    // Google: no special providerOptions needed — aspectRatio param handles it
+  }
+
+  console.log(`[generate] AI SDK generateImage: model=${modelId}, aspectRatio=${effectiveAspectRatio}, hasRef=${!!referenceImage}, provider=${imageConfig.provider_options_key}`);
+
+  const result = await generateImage({
+    model: modelInstance,
+    prompt: sdkPrompt,
+    aspectRatio: effectiveAspectRatio,
+    providerOptions: Object.keys(providerOptions).length > 0 ? providerOptions : undefined,
   });
 
-  if (!response.ok) {
-    const errorText = await response.text();
-    throw new Error(`Image API error: ${response.status} - ${errorText}`);
+  if (!result.image) {
+    throw new Error("No image returned from AI SDK generateImage()");
   }
 
-  const data = await response.json();
-  const imageData = data.data?.[0];
-
-  if (!imageData?.b64_json) {
-    throw new Error("No image data in response");
-  }
+  console.log(`[generate] AI SDK image received: mediaType=${result.image.mediaType}, base64Length=${result.image.base64.length}`);
 
   return {
     image: {
-      base64: imageData.b64_json,
-      media_type: "image/png",
+      base64: result.image.base64,
+      media_type: result.image.mediaType || "image/png",
     },
   };
 }
@@ -827,30 +836,21 @@ async function callResearchModel(params: {
 // Image Dimension Helpers
 // ============================================================================
 
-function aspectRatioToOpenAISize(
+/**
+ * Compute optimal BFL dimensions for a given aspect ratio and model.
+ *
+ * BFL constraints:
+ * - Dimensions must be multiples of 16
+ * - FLUX 2 Pro / FLUX 1.1 Pro Ultra: max ~4 megapixels
+ * - FLUX Kontext Pro: max ~1 megapixel
+ * - FLUX Kontext Max: max ~1 megapixel
+ *
+ * Falls back to supported_dimensions from DB config if available.
+ */
+function aspectRatioToBflDimensions(
   aspectRatio: string,
-  config: ImageConfig
-): string {
-  // Map common aspect ratios to OpenAI sizes
-  const mapping: Record<string, string> = {
-    "1:1": "1024x1024",
-    "16:9": "1792x1024",
-    "9:16": "1024x1792",
-    "4:3": "1024x1024", // Closest match
-    "3:4": "1024x1024", // Closest match
-  };
-
-  const size = mapping[aspectRatio];
-  if (size && config.supported_sizes?.includes(size)) {
-    return size;
-  }
-
-  return config.default_size || "1024x1024";
-}
-
-function aspectRatioToDimensions(
-  aspectRatio: string,
-  config: ImageConfig
+  config: ImageConfig,
+  modelId: string
 ): { width: number; height: number } {
   // Parse aspect ratio
   const [w, h] = aspectRatio.split(":").map(Number);
@@ -858,23 +858,26 @@ function aspectRatioToDimensions(
     return config.default_dimensions || { width: 1024, height: 1024 };
   }
 
-  // Find best matching supported dimension
+  // Determine max megapixels based on model
+  const isKontext = modelId.includes("kontext");
+  const maxPixels = isKontext ? 1_048_576 : 4_194_304; // 1MP vs 4MP
+
+  // Calculate optimal dimensions at max resolution
   const ratio = w / h;
-  const supported = config.supported_dimensions || [];
+  // height = sqrt(maxPixels / ratio), then round down to nearest multiple of 16
+  const rawHeight = Math.sqrt(maxPixels / ratio);
+  const height = Math.floor(rawHeight / 16) * 16;
+  const width = Math.floor((height * ratio) / 16) * 16;
 
-  let best = config.default_dimensions || { width: 1024, height: 1024 };
-  let bestDiff = Infinity;
-
-  for (const dim of supported) {
-    const dimRatio = dim.width / dim.height;
-    const diff = Math.abs(dimRatio - ratio);
-    if (diff < bestDiff) {
-      bestDiff = diff;
-      best = dim;
-    }
+  // Sanity check — don't exceed maxPixels
+  if (width * height > maxPixels) {
+    // Scale down one step
+    const scaledHeight = height - 16;
+    const scaledWidth = Math.floor((scaledHeight * ratio) / 16) * 16;
+    return { width: scaledWidth, height: scaledHeight };
   }
 
-  return best;
+  return { width, height };
 }
 
 // ============================================================================

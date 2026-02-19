@@ -4,6 +4,21 @@ All notable changes to Content Master Pro.
 
 ## [Unreleased]
 
+### Changed
+- **AI SDK Image Generation Migration** — Replaced raw REST API calls with Vercel AI SDK `generateImage()`
+  - All image generation now uses `experimental_generateImage` from the `ai` package (v6.0.x)
+  - BFL models (FLUX Kontext Pro/Max) route through Vercel AI Gateway via `gateway.image()`
+  - Google Gemini models route through direct `@ai-sdk/google` provider (v3.0.x) via `google.image()`
+  - Reference images delivered via `prompt.images[]` — works for both BFL and Gemini
+  - Removed old REST API functions (`callImageModel`, `callChatImageModel`) and dead helpers (`aspectRatioToOpenAISize`, `aspectRatioToDimensions`)
+  - Replaced with unified `callImageModelSDK()` — one function for all providers
+  - Added `GOOGLE_GENERATIVE_AI_API_KEY` env var for direct Gemini access
+  - Improved BFL dimension calculation with model-aware megapixel limits (1MP for Kontext, 4MP for FLUX 2)
+  - Added `generation_method` field to `ImageConfig` type
+  - Set `supports_image_input: true` for Gemini model in database
+  - Edge function bundle size: ~1.5MB (includes AI SDK + Google provider)
+  - Comprehensive docs: `docs/vercel-docs/ai-sdk-image-generation.md`
+
 ### Added
 - **Extended Thinking for Claude Models** - Enable internal reasoning for complex tasks
   - Added `supports_thinking` column to `ai_models` table

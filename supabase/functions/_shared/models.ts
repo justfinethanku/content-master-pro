@@ -24,6 +24,8 @@ export interface ImageConfig {
   supports_inpainting?: boolean;
   supports_image_input?: boolean;
   special_capabilities?: string[];
+  /** "image_api" (default) uses /v1/images/generations; "chat_completions" uses /v1/chat/completions with image modalities (e.g. Gemini) */
+  generation_method?: "image_api" | "chat_completions";
 }
 
 export interface ResearchConfig {
