@@ -1,8 +1,8 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect } from "react";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useSearchParams } from "next/navigation";
 import { cn } from "@/lib/utils";
 import { useSidebar } from "@/contexts/sidebar-context";
 import { Button } from "@/components/ui/button";
@@ -37,13 +37,9 @@ const navigation = [
 
 export function Sidebar(_props: { userEmail?: string }) {
   const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const search = searchParams.toString() ? `?${searchParams.toString()}` : "";
   const { isCollapsed, toggle, isMobileOpen, closeMobile } = useSidebar();
-
-  // Read search string on the client only (avoids useSearchParams Suspense requirement)
-  const [search, setSearch] = useState("");
-  useEffect(() => {
-    setSearch(window.location.search);
-  }, [pathname]);
 
   // Auto-close mobile sidebar on navigation
   useEffect(() => {
