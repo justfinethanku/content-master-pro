@@ -15,6 +15,7 @@ import {
 import {
   Brain,
   Calendar,
+  ImageIcon,
   Lightbulb,
   Map,
   Package,
@@ -29,6 +30,7 @@ const navigation = [
   { name: "Calendar", href: "/calendar", icon: Calendar },
   { name: "Deliverables", href: "/deliverables", icon: Package },
   { name: "Draft Ideas", href: "/deliverables?status=idea", icon: Lightbulb },
+  { name: "Thumbnails", href: "/thumbnails", icon: ImageIcon },
   { name: "Roadmap", href: "/roadmap", icon: Map },
   { name: "MCP", href: "/mcp", icon: Plug },
   { name: "Exec Circle", href: "/executive-mcp", icon: Users },

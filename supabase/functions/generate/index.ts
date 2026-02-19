@@ -23,6 +23,7 @@
  */
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { decode as decodeBase64 } from "https://deno.land/std@0.168.0/encoding/base64.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { corsHeaders, handleCors } from "../_shared/cors.ts";
 import { getSupabaseAdmin, getSupabaseClient, getAuthenticatedUser } from "../_shared/supabase.ts";
@@ -43,7 +44,9 @@ interface GenerateRequest {
     temperature?: number;
     max_tokens?: number;
     guideline_overrides?: Record<string, boolean>;
+    aspect_ratio?: string;
   };
+  reference_image?: string; // base64-encoded reference image
   stream?: boolean;
 }
 
@@ -55,6 +58,7 @@ interface GenerateResponse {
     base64: string;
     media_type: string;
     storage_url?: string;
+    storage_failed?: boolean;
   };
   citations?: string[];
   meta: {
@@ -105,7 +109,7 @@ serve(async (req: Request) => {
 
     // Parse request
     const body: GenerateRequest = await req.json();
-    const { prompt_slug, session_id, variables, overrides, stream } = body;
+    const { prompt_slug, session_id, variables, overrides, reference_image, stream } = body;
 
     if (!prompt_slug) {
       throw new Error("prompt_slug is required");
@@ -248,9 +252,9 @@ serve(async (req: Request) => {
           prompt: userMessage,
           systemPrompt,
           imageConfig: modelConfig.imageConfig!,
-          aspectRatio: destinationConfig
-            ? getDestinationAspectRatio(destinationConfig)
-            : null,
+          aspectRatio: overrides?.aspect_ratio
+            || (destinationConfig ? getDestinationAspectRatio(destinationConfig) : null),
+          referenceImage: reference_image,
         });
         break;
 
@@ -269,6 +273,65 @@ serve(async (req: Request) => {
     }
 
     const durationMs = Date.now() - startTime;
+
+    // 9b. Store generated image in Supabase Storage (if image result)
+    let imageStorageUrl: string | null = null;
+    let imageStorageFailed = false;
+    if (modelConfig.modelType === "image" && result.image) {
+      try {
+        const supabaseAdmin = getSupabaseAdmin();
+        const imageId = crypto.randomUUID();
+        const ext = result.image.media_type === "image/jpeg" ? "jpg" : "png";
+        const storagePath = `${user.id}/${imageId}.${ext}`;
+
+        // Decode base64 and upload
+        const bytes = decodeBase64(result.image.base64);
+
+        const { error: uploadError } = await supabaseAdmin.storage
+          .from("generated-images")
+          .upload(storagePath, bytes, {
+            contentType: result.image.media_type,
+            upsert: false,
+          });
+
+        if (!uploadError) {
+          const { data: urlData } = supabaseAdmin.storage
+            .from("generated-images")
+            .getPublicUrl(storagePath);
+
+          imageStorageUrl = urlData?.publicUrl || null;
+
+          // Save metadata to generated_images table
+          await supabaseAdmin.from("generated_images").insert({
+            user_id: user.id,
+            session_id: session_id || null,
+            storage_path: storagePath,
+            public_url: imageStorageUrl,
+            prompt: userMessage,
+            model_used: modelId,
+            aspect_ratio: overrides?.aspect_ratio || modelConfig.imageConfig?.default_aspect_ratio || "1:1",
+            mime_type: result.image.media_type,
+            file_size: bytes.length,
+            metadata: {
+              reference_image_used: !!reference_image,
+              duration_ms: durationMs,
+            },
+          });
+
+          // Immutably attach storage URL to result for client
+          result = {
+            ...result,
+            image: { ...result.image, storage_url: imageStorageUrl },
+          };
+        } else {
+          console.warn("Failed to upload image to storage:", uploadError);
+          imageStorageFailed = true;
+        }
+      } catch (storageError) {
+        console.warn("Image storage failed (non-fatal):", storageError);
+        imageStorageFailed = true;
+      }
+    }
 
     // 10. Log the call
     await logAICall({
@@ -299,7 +362,9 @@ serve(async (req: Request) => {
 
     // Add type-specific output
     if (modelConfig.modelType === "image" && result.image) {
-      response.image = result.image;
+      response.image = imageStorageFailed
+        ? { ...result.image, storage_failed: true }
+        : result.image;
     } else if (modelConfig.modelType === "research") {
       response.content = result.content;
       response.citations = result.citations;
@@ -391,6 +456,7 @@ interface AICallResult {
   image?: {
     base64: string;
     media_type: string;
+    storage_url?: string;
   };
   citations?: string[];
   tokensIn?: number;
@@ -611,8 +677,9 @@ async function callImageModel(params: {
   systemPrompt: string;
   imageConfig: ImageConfig;
   aspectRatio: string | null;
+  referenceImage?: string;
 }): Promise<AICallResult> {
-  const { modelId, prompt, systemPrompt, imageConfig, aspectRatio } = params;
+  const { modelId, prompt, systemPrompt, imageConfig, aspectRatio, referenceImage } = params;
 
   const gatewayApiKey = Deno.env.get("VERCEL_AI_GATEWAY_API_KEY");
   if (!gatewayApiKey) {
@@ -656,6 +723,15 @@ async function callImageModel(params: {
       const dims = aspectRatioToDimensions(effectiveAspectRatio, imageConfig);
       requestBody.width = dims.width;
       requestBody.height = dims.height;
+      // FLUX Kontext models support reference image via providerOptions
+      // See: https://ai-sdk.dev/providers/ai-sdk-providers/black-forest-labs
+      if (referenceImage && imageConfig.supports_image_input) {
+        requestBody.providerOptions = {
+          blackForestLabs: {
+            imagePrompt: referenceImage,
+          },
+        };
+      }
       break;
   }
 
