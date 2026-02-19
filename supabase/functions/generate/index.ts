@@ -154,29 +154,31 @@ serve(async (req: Request) => {
     }
 
     // 6. Assemble system prompt with all variables
-    // Priority: manual variables > resolved from template > system variables
-    const systemPrompt = interpolateTemplate(promptConfig.promptContent, {
-      // Variables resolved from template placeholders
+    // For image models: template = system instructions only (user content comes via userMessage)
+    // For text/research: template may contain {{content}} and other user variables
+    const USER_CONTENT_KEYS = new Set(["content", "input", "prompt"]);
+    const isImageModel = modelConfig.modelType === "image";
+
+    // For image models, strip user content variables so the template stays as pure instructions
+    const templateVars: Record<string, string | undefined> = {
       ...resolvedVars,
-
-      // Runtime variables from request (manual override takes precedence)
-      ...variables,
-
-      // Model-specific instructions (system-injected)
+      ...(isImageModel
+        ? Object.fromEntries(
+            Object.entries(variables || {}).filter(([k]) => !USER_CONTENT_KEYS.has(k))
+          )
+        : variables),
       model_instructions: modelConfig.systemPromptTips || "",
       model_format: modelConfig.formatInstructions || "",
-
-      // Destination-specific instructions (system-injected)
       destination_requirements: destinationConfig
         ? buildDestinationRequirements(destinationConfig)
         : "",
       destination_specs: destinationConfig
         ? JSON.stringify(destinationConfig.specs)
         : "",
-
-      // User guidelines (system-injected from brand_guidelines table)
       ...guidelineVars,
-    });
+    };
+
+    const systemPrompt = interpolateTemplate(promptConfig.promptContent, templateVars);
 
     // 7. Build user message from runtime variables
     const userMessage = buildUserMessage({ ...resolvedVars, ...variables });
@@ -697,9 +699,12 @@ async function callImageModelSDK(params: {
     throw new Error("VERCEL_AI_GATEWAY_API_KEY not configured");
   }
 
-  // Combine system prompt and user prompt
-  const fullPrompt = systemPrompt
-    ? `${systemPrompt}\n\n${prompt}`
+  // Combine system instructions (from Prompt Studio template) with user prompt.
+  // systemPrompt = DB template with system instructions only (no user content).
+  // prompt = user's actual image generation request (from userMessage/content).
+  const trimmedSystem = systemPrompt?.trim();
+  const fullPrompt = trimmedSystem && trimmedSystem !== "{{content}}"
+    ? `${trimmedSystem}\n\n${prompt}`
     : prompt;
 
   const effectiveAspectRatio = aspectRatio || imageConfig.default_aspect_ratio || "1:1";

@@ -171,6 +171,29 @@ export default function ThumbnailsPage() {
     },
   });
 
+  // Load default model from Prompt Studio's image_generator config
+  const { data: promptDefault } = useQuery({
+    queryKey: ["prompt_config", "image_generator", "default_model"],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("prompt_sets")
+        .select(
+          `prompt_versions!prompt_versions_prompt_set_id_fkey (
+            ai_models!prompt_versions_model_id_fkey ( model_id )
+          )`
+        )
+        .eq("slug", "image_generator")
+        .eq("prompt_versions.status", "active")
+        .single();
+
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const version = (data?.prompt_versions as any)?.[0];
+      const modelId = version?.ai_models?.model_id ?? version?.ai_models?.[0]?.model_id;
+      if (error || !modelId) return null;
+      return { modelId: modelId as string };
+    },
+  });
+
   const { data: projects = [] } = useQuery({
     queryKey: ["projects", "list-simple"],
     queryFn: async (): Promise<ProjectOption[]> => {
@@ -215,12 +238,14 @@ export default function ThumbnailsPage() {
     return groups;
   }, [models]);
 
-  // Auto-select first model when models load (moved from render to useEffect)
+  // Auto-select default model: Prompt Studio config > first available
   useEffect(() => {
     if (models.length > 0 && !selectedModelId) {
-      setSelectedModelId(models[0].model_id);
+      const defaultId = promptDefault?.modelId;
+      const defaultExists = defaultId && models.some((m) => m.model_id === defaultId);
+      setSelectedModelId(defaultExists ? defaultId : models[0].model_id);
     }
-  }, [models, selectedModelId]);
+  }, [models, selectedModelId, promptDefault]);
 
   // ============================================================================
   // Handlers

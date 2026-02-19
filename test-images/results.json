@@ -1,0 +1,62 @@
+[
+  {
+    "model": "openai/dall-e-3",
+    "success": false,
+    "durationMs": 2075,
+    "error": "HTTP 400: {\"success\":false,\"error\":\"Image API error: 404 - {\\\"error\\\":{\\\"message\\\":\\\"Model 'openai/dall-e-3' not found\\\",\\\"type\\\":\\\"model_not_found\\\",\\\"param\\\":{\\\"modelId\\\":\\\"openai/dall-e-3\\\"}}}\",\"meta\":{\"mode"
+  },
+  {
+    "model": "openai/dall-e-2",
+    "success": false,
+    "durationMs": 1274,
+    "error": "HTTP 400: {\"success\":false,\"error\":\"Image API error: 404 - {\\\"error\\\":{\\\"message\\\":\\\"Model 'openai/dall-e-2' not found\\\",\\\"type\\\":\\\"model_not_found\\\",\\\"param\\\":{\\\"modelId\\\":\\\"openai/dall-e-2\\\"}}}\",\"meta\":{\"mode"
+  },
+  {
+    "model": "bfl/flux-2-pro",
+    "success": true,
+    "durationMs": 24004,
+    "filePath": "bfl-flux-2-pro.png"
+  },
+  {
+    "model": "bfl/flux-2-flex",
+    "success": true,
+    "durationMs": 23709,
+    "filePath": "bfl-flux-2-flex.png"
+  },
+  {
+    "model": "bfl/flux-kontext-pro",
+    "success": true,
+    "durationMs": 10710,
+    "filePath": "bfl-flux-kontext-pro.png"
+  },
+  {
+    "model": "bfl/flux-pro-1.1",
+    "success": true,
+    "durationMs": 4879,
+    "filePath": "bfl-flux-pro-1.1.png"
+  },
+  {
+    "model": "bfl/flux-pro-1.1-ultra",
+    "success": true,
+    "durationMs": 10751,
+    "filePath": "bfl-flux-pro-1.1-ultra.png"
+  },
+  {
+    "model": "bfl/flux-kontext-max",
+    "success": true,
+    "durationMs": 13461,
+    "filePath": "bfl-flux-kontext-max.png"
+  },
+  {
+    "model": "google/imagen-4.0-ultra-generate",
+    "success": true,
+    "durationMs": 15910,
+    "filePath": "google-imagen-4.0-ultra-generate.png"
+  },
+  {
+    "model": "google/gemini-3-pro-image",
+    "success": false,
+    "durationMs": 1299,
+    "error": "HTTP 400: {\"success\":false,\"error\":\"Image API error: 404 - {\\\"error\\\":{\\\"message\\\":\\\"models/gemini-3-pro-image-preview is not found for API version v1beta, or is not supported for predict. Call ListModels to se"
+  }
+]
