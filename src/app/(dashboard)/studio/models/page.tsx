@@ -30,6 +30,7 @@ import {
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
 import { Switch } from "@/components/ui/switch";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   Collapsible,
   CollapsibleTrigger,
@@ -59,6 +60,8 @@ import {
   ChevronRight,
   ChevronDown,
   ChevronsUpDown,
+  ImagePlus,
+  X,
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 
@@ -110,6 +113,21 @@ interface SyncReport {
   updatedModels: number;
 }
 
+/**
+ * Derive a model family key by stripping version-like suffixes.
+ * e.g. "anthropic/claude-sonnet-4-5" → "anthropic/claude-sonnet"
+ *      "openai/gpt-4.1" → "openai/gpt"
+ *      "google/gemini-2.5-flash" → "google/gemini-flash"
+ */
+function getModelFamily(modelId: string): string {
+  const slashIdx = modelId.indexOf("/");
+  const provider = slashIdx >= 0 ? modelId.slice(0, slashIdx) : modelId;
+  const name = slashIdx >= 0 ? modelId.slice(slashIdx + 1) : modelId;
+  // Strip trailing version segments: numbers, dots, dashes followed by numbers
+  const family = name.replace(/[-.]?\d[\d.]*(-\d[\d.]*)*$/g, "").replace(/-$/, "");
+  return `${provider}/${family || name}`;
+}
+
 export default function ModelsPage() {
   const [models, setModels] = useState<AIModel[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -122,6 +140,12 @@ export default function ModelsPage() {
   const [expandedProviders, setExpandedProviders] = useState<Set<string>>(new Set());
   const [isHydrated, setIsHydrated] = useState(false);
 
+  // Filter state
+  const [filterType, setFilterType] = useState<string | null>(null);
+  const [filterSearch, setFilterSearch] = useState("");
+  const [showEnabledOnly, setShowEnabledOnly] = useState(false);
+  const [showLatestOnly, setShowLatestOnly] = useState(false);
+
   // Load from localStorage after mount (avoids SSR hydration mismatch)
   useEffect(() => {
     try {
@@ -129,6 +153,14 @@ export default function ModelsPage() {
       if (pinned) setPinnedProviders(new Set(JSON.parse(pinned) as string[]));
       const expanded = localStorage.getItem("cmp:models:expanded");
       if (expanded) setExpandedProviders(new Set(JSON.parse(expanded) as string[]));
+      // Restore filter state
+      const filters = localStorage.getItem("cmp:models:filters");
+      if (filters) {
+        const f = JSON.parse(filters) as { type?: string; enabledOnly?: boolean; latestOnly?: boolean };
+        if (f.type) setFilterType(f.type);
+        if (f.enabledOnly) setShowEnabledOnly(true);
+        if (f.latestOnly) setShowLatestOnly(true);
+      }
     } catch { /* ignore corrupt localStorage */ }
     setIsHydrated(true);
   }, []);
@@ -142,6 +174,14 @@ export default function ModelsPage() {
     if (!isHydrated) return;
     localStorage.setItem("cmp:models:expanded", JSON.stringify([...expandedProviders]));
   }, [expandedProviders, isHydrated]);
+  useEffect(() => {
+    if (!isHydrated) return;
+    localStorage.setItem("cmp:models:filters", JSON.stringify({
+      type: filterType,
+      enabledOnly: showEnabledOnly,
+      latestOnly: showLatestOnly,
+    }));
+  }, [filterType, showEnabledOnly, showLatestOnly, isHydrated]);
 
   const togglePin = (provider: string, e: React.MouseEvent) => {
     e.stopPropagation();
@@ -269,18 +309,25 @@ export default function ModelsPage() {
     setSaveSuccess(false);
 
     try {
+      // Build update payload — include image_config only if model is image type
+      const updatePayload: Record<string, unknown> = {
+        system_prompt_tips: editorData.system_prompt_tips,
+        preferred_format: editorData.preferred_format,
+        format_instructions: editorData.format_instructions,
+        quirks: editorData.quirks,
+        default_temperature: editorData.default_temperature,
+        default_max_tokens: editorData.default_max_tokens,
+        api_notes: editorData.api_notes,
+        model_type: editorData.model_type,
+      };
+
+      if ((editorData.model_type || editingModel.model_type) === "image" && editorData.image_config) {
+        updatePayload.image_config = editorData.image_config;
+      }
+
       const { error: updateError } = await supabase
         .from("ai_models")
-        .update({
-          system_prompt_tips: editorData.system_prompt_tips,
-          preferred_format: editorData.preferred_format,
-          format_instructions: editorData.format_instructions,
-          quirks: editorData.quirks,
-          default_temperature: editorData.default_temperature,
-          default_max_tokens: editorData.default_max_tokens,
-          api_notes: editorData.api_notes,
-          model_type: editorData.model_type,
-        })
+        .update(updatePayload)
         .eq("id", editingModel.id);
 
       if (updateError) throw updateError;
@@ -396,15 +443,81 @@ export default function ModelsPage() {
     }
   };
 
-  // Group models by provider
-  const modelsByProvider = models.reduce(
-    (acc, model) => {
-      if (!acc[model.provider]) acc[model.provider] = [];
-      acc[model.provider].push(model);
-      return acc;
-    },
-    {} as Record<string, AIModel[]>
-  );
+  // Type counts (computed from all models, not filtered)
+  const typeCounts = useMemo(() => {
+    const counts: Record<string, number> = {};
+    for (const m of models) {
+      counts[m.model_type] = (counts[m.model_type] || 0) + 1;
+    }
+    return counts;
+  }, [models]);
+
+  // Filtered models pipeline
+  const filteredModels = useMemo(() => {
+    let result = models;
+
+    if (filterType) {
+      result = result.filter((m) => m.model_type === filterType);
+    }
+
+    if (filterSearch.trim()) {
+      const q = filterSearch.toLowerCase();
+      result = result.filter(
+        (m) =>
+          m.display_name.toLowerCase().includes(q) ||
+          m.model_id.toLowerCase().includes(q)
+      );
+    }
+
+    if (showEnabledOnly) {
+      result = result.filter((m) => m.is_available);
+    }
+
+    if (showLatestOnly) {
+      const familyMap = new Map<string, AIModel>();
+      for (const m of result) {
+        const family = getModelFamily(m.model_id);
+        const existing = familyMap.get(family);
+        if (
+          !existing ||
+          (m.released_at && (!existing.released_at || m.released_at > existing.released_at))
+        ) {
+          familyMap.set(family, m);
+        }
+      }
+      result = Array.from(familyMap.values());
+    }
+
+    return result;
+  }, [models, filterType, filterSearch, showEnabledOnly, showLatestOnly]);
+
+  const hasActiveFilters = filterType !== null || filterSearch.trim() !== "" || showEnabledOnly || showLatestOnly;
+
+  const clearFilters = () => {
+    setFilterType(null);
+    setFilterSearch("");
+    setShowEnabledOnly(false);
+    setShowLatestOnly(false);
+  };
+
+  // Group filtered models by provider, sorted by release date within each group
+  const modelsByProvider = useMemo(() => {
+    const groups: Record<string, AIModel[]> = {};
+    for (const model of filteredModels) {
+      if (!groups[model.provider]) groups[model.provider] = [];
+      groups[model.provider].push(model);
+    }
+    // Sort within each group: newest first, null dates last
+    for (const providerModels of Object.values(groups)) {
+      providerModels.sort((a, b) => {
+        if (!a.released_at && !b.released_at) return a.display_name.localeCompare(b.display_name);
+        if (!a.released_at) return 1;
+        if (!b.released_at) return -1;
+        return b.released_at.localeCompare(a.released_at);
+      });
+    }
+    return groups;
+  }, [filteredModels]);
 
   // Sorted provider list: pinned first (alpha), then unpinned (alpha)
   const sortedProviders = useMemo(() => {
@@ -427,7 +540,7 @@ export default function ModelsPage() {
     }
   };
 
-  const availableCount = models.filter((m) => m.is_available).length;
+  const availableCount = filteredModels.filter((m) => m.is_available).length;
 
   if (isLoading) {
     return (
@@ -439,9 +552,15 @@ export default function ModelsPage() {
 
   return (
     <div className="space-y-6">
+      {/* Header row: stats + actions */}
       <div className="flex items-center justify-between">
         <p className="text-sm text-muted-foreground">
-          {models.length} models synced · {availableCount} enabled · {sortedProviders.length} providers
+          {hasActiveFilters ? (
+            <>{filteredModels.length} of {models.length} models</>
+          ) : (
+            <>{models.length} models synced</>
+          )}
+          {" · "}{availableCount} enabled · {sortedProviders.length} provider{sortedProviders.length !== 1 ? "s" : ""}
         </p>
         <div className="flex items-center gap-2">
           <Button variant="ghost" size="sm" onClick={toggleAllExpanded} disabled={sortedProviders.length === 0}>
@@ -449,19 +568,101 @@ export default function ModelsPage() {
             {allExpanded ? "Collapse All" : "Expand All"}
           </Button>
           <Button variant="outline" onClick={syncModels} disabled={isSyncing}>
-          {isSyncing ? (
-            <>
-              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-              Syncing...
-            </>
-          ) : (
-            <>
-              <RefreshCw className="mr-2 h-4 w-4" />
-              Sync Models
-            </>
-          )}
-        </Button>
+            {isSyncing ? (
+              <>
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                Syncing...
+              </>
+            ) : (
+              <>
+                <RefreshCw className="mr-2 h-4 w-4" />
+                Sync Models
+              </>
+            )}
+          </Button>
         </div>
+      </div>
+
+      {/* Filter bar */}
+      <div className="flex flex-wrap items-center gap-3 rounded-lg border border-border bg-muted/30 px-4 py-3">
+        {/* Type toggles */}
+        <div className="flex items-center gap-1.5">
+          {(["text", "image", "research"] as const).map((type) => (
+            <button
+              key={type}
+              type="button"
+              onClick={() => setFilterType(filterType === type ? null : type)}
+              className={`inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-medium transition-colors ${
+                filterType === type
+                  ? type === "text"
+                    ? "bg-blue-500/20 text-blue-600 ring-1 ring-blue-500/30"
+                    : type === "image"
+                      ? "bg-orange-500/20 text-orange-600 ring-1 ring-orange-500/30"
+                      : "bg-purple-500/20 text-purple-600 ring-1 ring-purple-500/30"
+                  : "bg-background text-muted-foreground hover:text-foreground hover:bg-muted"
+              }`}
+            >
+              {type === "text" ? <MessageSquare className="h-3 w-3" /> : type === "image" ? <Image className="h-3 w-3" /> : <Search className="h-3 w-3" />}
+              {type.charAt(0).toUpperCase() + type.slice(1)}
+              <span className="text-[10px] opacity-60">({typeCounts[type] || 0})</span>
+            </button>
+          ))}
+        </div>
+
+        <Separator orientation="vertical" className="h-6" />
+
+        {/* Search */}
+        <div className="relative flex-1 min-w-40 max-w-65">
+          <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+          <Input
+            value={filterSearch}
+            onChange={(e) => setFilterSearch(e.target.value)}
+            placeholder="Search models..."
+            className="h-8 pl-8 pr-8 text-xs"
+          />
+          {filterSearch && (
+            <button
+              type="button"
+              onClick={() => setFilterSearch("")}
+              className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+            >
+              <X className="h-3.5 w-3.5" />
+            </button>
+          )}
+        </div>
+
+        <Separator orientation="vertical" className="h-6" />
+
+        {/* Checkboxes */}
+        <div className="flex items-center gap-4">
+          <label className="flex items-center gap-1.5 text-xs cursor-pointer">
+            <Checkbox
+              checked={showEnabledOnly}
+              onCheckedChange={(c) => setShowEnabledOnly(!!c)}
+              className="h-3.5 w-3.5"
+            />
+            <span className="text-muted-foreground">Enabled only</span>
+          </label>
+          <label className="flex items-center gap-1.5 text-xs cursor-pointer">
+            <Checkbox
+              checked={showLatestOnly}
+              onCheckedChange={(c) => setShowLatestOnly(!!c)}
+              className="h-3.5 w-3.5"
+            />
+            <span className="text-muted-foreground">Latest only</span>
+          </label>
+        </div>
+
+        {/* Clear filters */}
+        {hasActiveFilters && (
+          <>
+            <Separator orientation="vertical" className="h-6" />
+            <Button variant="ghost" size="sm" onClick={clearFilters} className="h-7 px-2 text-xs">
+              <X className="mr-1 h-3 w-3" />
+              Clear
+            </Button>
+          </>
+        )}
       </div>
 
       {syncReport && (
@@ -570,7 +771,7 @@ export default function ModelsPage() {
                         </div>
                       </div>
                     </CardHeader>
-                    <CardContent className="space-y-2">
+                    <CardContent className="space-y-2 overflow-hidden">
                       {/* Description */}
                       {model.description && (
                         <p className="text-xs text-muted-foreground line-clamp-2">
@@ -580,7 +781,7 @@ export default function ModelsPage() {
 
                       {/* Pricing */}
                       {formatPricing(model.pricing) && (
-                        <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                        <div className="flex items-center gap-1.5 text-xs text-muted-foreground min-w-0">
                           <DollarSign className="h-3 w-3 shrink-0" />
                           <span className="truncate">
                             {formatPricing(model.pricing)}
@@ -588,10 +789,10 @@ export default function ModelsPage() {
                         </div>
                       )}
 
-                      {/* Tags */}
-                      {model.tags && model.tags.length > 0 && (
+                      {/* Tags + image capabilities */}
+                      {(model.tags?.length || (model.model_type === "image" && model.image_config)) && (
                         <div className="flex flex-wrap gap-1">
-                          {model.tags.map((tag) => (
+                          {model.tags?.map((tag) => (
                             <Badge
                               key={tag}
                               variant="secondary"
@@ -601,11 +802,20 @@ export default function ModelsPage() {
                               {tag}
                             </Badge>
                           ))}
+                          {model.model_type === "image" && !!(model.image_config as Record<string, unknown>)?.supports_image_input && (
+                            <Badge
+                              variant="secondary"
+                              className="text-[10px] px-1.5 py-0 h-5 gap-1 bg-green-500/10 text-green-600 border-green-500/20"
+                            >
+                              <ImagePlus className="h-2.5 w-2.5" />
+                              Ref Image
+                            </Badge>
+                          )}
                         </div>
                       )}
 
                       {/* Specs row */}
-                      <div className="flex items-center gap-3 text-xs text-muted-foreground pt-1">
+                      <div className="flex items-center gap-3 text-xs text-muted-foreground pt-1 min-w-0 overflow-hidden">
                         {model.context_window && (
                           <span>{formatNumber(model.context_window)} ctx</span>
                         )}
@@ -647,6 +857,17 @@ export default function ModelsPage() {
           </Collapsible>
         );
       })}
+
+      {/* Empty state when all models are filtered out */}
+      {sortedProviders.length === 0 && hasActiveFilters && (
+        <div className="flex flex-col items-center justify-center py-12 text-center">
+          <Search className="h-8 w-8 text-muted-foreground mb-3" />
+          <p className="text-sm text-muted-foreground">No models match your filters</p>
+          <Button variant="ghost" size="sm" onClick={clearFilters} className="mt-2">
+            Clear filters
+          </Button>
+        </div>
+      )}
 
       {/* Editor Dialog — manual fields only */}
       <Dialog
@@ -739,6 +960,41 @@ export default function ModelsPage() {
                   Override the auto-inferred type if needed
                 </p>
               </div>
+
+              {/* Image-specific settings (only for image models) */}
+              {(editorData.model_type || editingModel?.model_type) === "image" && (
+                <>
+                  <Separator />
+                  <div className="space-y-3">
+                    <h3 className="font-medium">Image Capabilities</h3>
+                    <div className="flex items-center gap-2">
+                      <Checkbox
+                        id="supports_image_input"
+                        checked={
+                          (editorData.image_config as Record<string, unknown>)?.supports_image_input === true
+                        }
+                        onCheckedChange={(checked) =>
+                          setEditorData({
+                            ...editorData,
+                            image_config: {
+                              ...(editorData.image_config as Record<string, unknown> || {}),
+                              supports_image_input: !!checked,
+                            },
+                          })
+                        }
+                      />
+                      <Label htmlFor="supports_image_input" className="text-sm font-normal cursor-pointer">
+                        Supports reference image input
+                      </Label>
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      Enable this if the model can accept a reference image alongside the prompt
+                      (e.g. for style transfer or composition guidance). This controls the reference
+                      image upload on the Thumbnails page.
+                    </p>
+                  </div>
+                </>
+              )}
 
               <Separator />
 
