@@ -4,6 +4,11 @@
 # working directory name when running `supabase init`.
 project_id = "content-master-pro"
 
+[functions.generate]
+# Auth is enforced inside the function via getAuthenticatedUser().
+# Disable edge-layer JWT verification to allow current user tokens.
+verify_jwt = false
+
 [api]
 enabled = true
 # Port to use for the API URL.
