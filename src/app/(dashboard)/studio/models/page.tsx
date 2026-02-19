@@ -30,6 +30,7 @@ import {
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
 import { Switch } from "@/components/ui/switch";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   Collapsible,
   CollapsibleTrigger,
@@ -59,6 +60,7 @@ import {
   ChevronRight,
   ChevronDown,
   ChevronsUpDown,
+  ImagePlus,
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 
@@ -269,18 +271,25 @@ export default function ModelsPage() {
     setSaveSuccess(false);
 
     try {
+      // Build update payload — include image_config only if model is image type
+      const updatePayload: Record<string, unknown> = {
+        system_prompt_tips: editorData.system_prompt_tips,
+        preferred_format: editorData.preferred_format,
+        format_instructions: editorData.format_instructions,
+        quirks: editorData.quirks,
+        default_temperature: editorData.default_temperature,
+        default_max_tokens: editorData.default_max_tokens,
+        api_notes: editorData.api_notes,
+        model_type: editorData.model_type,
+      };
+
+      if ((editorData.model_type || editingModel.model_type) === "image" && editorData.image_config) {
+        updatePayload.image_config = editorData.image_config;
+      }
+
       const { error: updateError } = await supabase
         .from("ai_models")
-        .update({
-          system_prompt_tips: editorData.system_prompt_tips,
-          preferred_format: editorData.preferred_format,
-          format_instructions: editorData.format_instructions,
-          quirks: editorData.quirks,
-          default_temperature: editorData.default_temperature,
-          default_max_tokens: editorData.default_max_tokens,
-          api_notes: editorData.api_notes,
-          model_type: editorData.model_type,
-        })
+        .update(updatePayload)
         .eq("id", editingModel.id);
 
       if (updateError) throw updateError;
@@ -588,10 +597,10 @@ export default function ModelsPage() {
                         </div>
                       )}
 
-                      {/* Tags */}
-                      {model.tags && model.tags.length > 0 && (
+                      {/* Tags + image capabilities */}
+                      {(model.tags?.length || (model.model_type === "image" && model.image_config)) && (
                         <div className="flex flex-wrap gap-1">
-                          {model.tags.map((tag) => (
+                          {model.tags?.map((tag) => (
                             <Badge
                               key={tag}
                               variant="secondary"
@@ -601,6 +610,15 @@ export default function ModelsPage() {
                               {tag}
                             </Badge>
                           ))}
+                          {model.model_type === "image" && !!(model.image_config as Record<string, unknown>)?.supports_image_input && (
+                            <Badge
+                              variant="secondary"
+                              className="text-[10px] px-1.5 py-0 h-5 gap-1 bg-green-500/10 text-green-600 border-green-500/20"
+                            >
+                              <ImagePlus className="h-2.5 w-2.5" />
+                              Ref Image
+                            </Badge>
+                          )}
                         </div>
                       )}
 
@@ -739,6 +757,41 @@ export default function ModelsPage() {
                   Override the auto-inferred type if needed
                 </p>
               </div>
+
+              {/* Image-specific settings (only for image models) */}
+              {(editorData.model_type || editingModel?.model_type) === "image" && (
+                <>
+                  <Separator />
+                  <div className="space-y-3">
+                    <h3 className="font-medium">Image Capabilities</h3>
+                    <div className="flex items-center gap-2">
+                      <Checkbox
+                        id="supports_image_input"
+                        checked={
+                          (editorData.image_config as Record<string, unknown>)?.supports_image_input === true
+                        }
+                        onCheckedChange={(checked) =>
+                          setEditorData({
+                            ...editorData,
+                            image_config: {
+                              ...(editorData.image_config as Record<string, unknown> || {}),
+                              supports_image_input: !!checked,
+                            },
+                          })
+                        }
+                      />
+                      <Label htmlFor="supports_image_input" className="text-sm font-normal cursor-pointer">
+                        Supports reference image input
+                      </Label>
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      Enable this if the model can accept a reference image alongside the prompt
+                      (e.g. for style transfer or composition guidance). This controls the reference
+                      image upload on the Thumbnails page.
+                    </p>
+                  </div>
+                </>
+              )}
 
               <Separator />
 

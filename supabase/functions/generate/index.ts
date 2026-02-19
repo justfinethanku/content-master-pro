@@ -705,8 +705,19 @@ async function callImageModel(params: {
   switch (imageConfig.provider_options_key) {
     case "google":
       // Google uses aspect_ratio
-      // Note: Vercel AI Gateway may require specific format
       requestBody.aspect_ratio = effectiveAspectRatio;
+      // Google Imagen models support reference images via providerOptions
+      // See: https://ai-sdk.dev/providers/ai-sdk-providers/google-generative-ai
+      if (referenceImage && imageConfig.supports_image_input) {
+        requestBody.providerOptions = {
+          google: {
+            referenceImages: [{
+              referenceImage: { bytesBase64Encoded: referenceImage },
+              referenceType: "STYLE",
+            }],
+          },
+        };
+      }
       break;
 
     case "openai":

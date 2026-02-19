@@ -510,7 +510,7 @@ export default function ThumbnailsPage() {
                 {!supportsImageInput && (
                   <TooltipContent>
                     <p>
-                      Switch to a FLUX Kontext model to use reference images
+                      Selected model does not support reference images
                     </p>
                   </TooltipContent>
                 )}
