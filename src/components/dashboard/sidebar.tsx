@@ -32,16 +32,10 @@ const navigation = [
   { name: "Roadmap", href: "/roadmap", icon: Map },
   { name: "MCP", href: "/mcp", icon: Plug },
   { name: "Exec Circle", href: "/executive-mcp", icon: Users },
-];
-
-const ADMIN_EMAIL = "jon@contentionmedia.com";
-
-const adminNavigation = [
   { name: "Studio", href: "/studio", icon: Sliders },
 ];
 
-export function Sidebar({ userEmail }: { userEmail?: string }) {
-  const isAdmin = userEmail === ADMIN_EMAIL;
+export function Sidebar(_props: { userEmail?: string }) {
   const pathname = usePathname();
   const { isCollapsed, toggle, isMobileOpen, closeMobile } = useSidebar();
 
@@ -147,15 +141,6 @@ export function Sidebar({ userEmail }: { userEmail?: string }) {
         !mobile && isCollapsed ? "p-2" : "p-4"
       )}>
         {renderNavItems(navigation, mobile ? "mobile" : "main", mobile)}
-        {isAdmin && (
-          <>
-            <div className={cn(
-              "my-2 border-t border-border",
-              !mobile && isCollapsed ? "mx-1" : "mx-0"
-            )} />
-            {renderNavItems(adminNavigation, mobile ? "mobile-admin" : "admin", mobile)}
-          </>
-        )}
       </nav>
 
       {/* Expand button when collapsed (desktop only) */}

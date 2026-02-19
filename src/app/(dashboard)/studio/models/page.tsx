@@ -2,7 +2,13 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
@@ -26,7 +32,6 @@ import { Separator } from "@/components/ui/separator";
 import { Switch } from "@/components/ui/switch";
 import {
   Cpu,
-  Edit,
   Save,
   Loader2,
   Check,
@@ -37,20 +42,40 @@ import {
   Search,
   MessageSquare,
   Info,
+  Calendar,
+  DollarSign,
+  Eye,
+  Brain,
+  Wrench,
+  FileInput,
+  Sparkles,
+  Database,
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
+
+interface PricingData {
+  input?: string;
+  output?: string;
+  image?: string;
+  web_search?: string;
+  cache_creation_input?: string;
+  cache_read_input?: string;
+  [key: string]: unknown;
+}
 
 interface AIModel {
   id: string;
   model_id: string;
   provider: string;
   display_name: string;
+  description: string | null;
   model_type: string;
   context_window: number | null;
   max_output_tokens: number | null;
   is_available: boolean;
   supports_streaming: boolean;
   supports_images: boolean;
+  supports_thinking: boolean;
   system_prompt_tips: string | null;
   preferred_format: string | null;
   format_instructions: string | null;
@@ -61,6 +86,19 @@ interface AIModel {
   default_max_tokens: number | null;
   api_endpoint_override: string | null;
   api_notes: string | null;
+  pricing: PricingData | null;
+  tags: string[] | null;
+  released_at: string | null;
+  gateway_type: string | null;
+}
+
+interface SyncReport {
+  success: boolean;
+  totalFromApi: number;
+  excluded: number;
+  synced: number;
+  newModels: number;
+  updatedModels: number;
 }
 
 export default function ModelsPage() {
@@ -68,6 +106,7 @@ export default function ModelsPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [isSyncing, setIsSyncing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [syncReport, setSyncReport] = useState<SyncReport | null>(null);
 
   // Editor state
   const [editingModel, setEditingModel] = useState<AIModel | null>(null);
@@ -105,6 +144,7 @@ export default function ModelsPage() {
   const syncModels = async () => {
     setIsSyncing(true);
     setError(null);
+    setSyncReport(null);
 
     try {
       const response = await fetch("/api/admin/sync-models", {
@@ -116,12 +156,43 @@ export default function ModelsPage() {
         throw new Error(data.error || "Failed to sync models");
       }
 
+      const report = (await response.json()) as SyncReport;
+      setSyncReport(report);
       await loadModels();
     } catch (err) {
       console.error("Failed to sync models:", err);
       setError(err instanceof Error ? err.message : "Failed to sync models");
     } finally {
       setIsSyncing(false);
+    }
+  };
+
+  const toggleAvailability = async (model: AIModel, e: React.MouseEvent) => {
+    e.stopPropagation();
+    const newValue = !model.is_available;
+
+    // Optimistic update
+    setModels((prev) =>
+      prev.map((m) =>
+        m.id === model.id ? { ...m, is_available: newValue } : m
+      )
+    );
+
+    try {
+      const { error: updateError } = await supabase
+        .from("ai_models")
+        .update({ is_available: newValue })
+        .eq("id", model.id);
+
+      if (updateError) throw updateError;
+    } catch (err) {
+      // Revert on failure
+      setModels((prev) =>
+        prev.map((m) =>
+          m.id === model.id ? { ...m, is_available: !newValue } : m
+        )
+      );
+      console.error("Failed to toggle availability:", err);
     }
   };
 
@@ -154,7 +225,7 @@ export default function ModelsPage() {
           default_temperature: editorData.default_temperature,
           default_max_tokens: editorData.default_max_tokens,
           api_notes: editorData.api_notes,
-          is_available: editorData.is_available,
+          model_type: editorData.model_type,
         })
         .eq("id", editingModel.id);
 
@@ -173,13 +244,13 @@ export default function ModelsPage() {
   const getTypeIcon = (type: string) => {
     switch (type) {
       case "text":
-        return <MessageSquare className="h-5 w-5" />;
+        return <MessageSquare className="h-4 w-4" />;
       case "image":
-        return <Image className="h-5 w-5" />;
+        return <Image className="h-4 w-4" />;
       case "research":
-        return <Search className="h-5 w-5" />;
+        return <Search className="h-4 w-4" />;
       default:
-        return <Cpu className="h-5 w-5" />;
+        return <Cpu className="h-4 w-4" />;
     }
   };
 
@@ -196,6 +267,25 @@ export default function ModelsPage() {
     }
   };
 
+  const getTagIcon = (tag: string) => {
+    switch (tag) {
+      case "reasoning":
+        return <Brain className="h-3 w-3" />;
+      case "vision":
+        return <Eye className="h-3 w-3" />;
+      case "tool-use":
+        return <Wrench className="h-3 w-3" />;
+      case "file-input":
+        return <FileInput className="h-3 w-3" />;
+      case "image-generation":
+        return <Sparkles className="h-3 w-3" />;
+      case "implicit-caching":
+        return <Database className="h-3 w-3" />;
+      default:
+        return null;
+    }
+  };
+
   const formatNumber = (num: number | null): string => {
     if (num === null) return "N/A";
     if (num >= 1000000) return `${(num / 1000000).toFixed(1)}M`;
@@ -203,12 +293,66 @@ export default function ModelsPage() {
     return num.toString();
   };
 
+  /** Format per-token pricing string to human-readable per-million format */
+  const formatPricing = (pricing: PricingData | null): string | null => {
+    if (!pricing) return null;
+
+    const parts: string[] = [];
+
+    if (pricing.input && pricing.output) {
+      const inputPerM = parseFloat(pricing.input as string) * 1_000_000;
+      const outputPerM = parseFloat(pricing.output as string) * 1_000_000;
+      if (!isNaN(inputPerM) && !isNaN(outputPerM)) {
+        parts.push(`$${formatPrice(inputPerM)} in / $${formatPrice(outputPerM)} out`);
+      }
+    }
+
+    if (pricing.image) {
+      const imagePrice = parseFloat(pricing.image as string);
+      if (!isNaN(imagePrice)) {
+        parts.push(`$${formatPrice(imagePrice)}/image`);
+      }
+    }
+
+    if (pricing.web_search) {
+      const searchPrice = parseFloat(pricing.web_search as string);
+      if (!isNaN(searchPrice)) {
+        parts.push(`$${formatPrice(searchPrice)}/search`);
+      }
+    }
+
+    return parts.length > 0 ? parts.join(" · ") : null;
+  };
+
+  const formatPrice = (price: number): string => {
+    if (price >= 1) return price.toFixed(2);
+    if (price >= 0.01) return price.toFixed(3);
+    return price.toFixed(4);
+  };
+
+  const formatDate = (dateStr: string | null): string | null => {
+    if (!dateStr) return null;
+    try {
+      return new Date(dateStr).toLocaleDateString("en-US", {
+        month: "short",
+        year: "numeric",
+      });
+    } catch {
+      return null;
+    }
+  };
+
   // Group models by provider
-  const modelsByProvider = models.reduce((acc, model) => {
-    if (!acc[model.provider]) acc[model.provider] = [];
-    acc[model.provider].push(model);
-    return acc;
-  }, {} as Record<string, AIModel[]>);
+  const modelsByProvider = models.reduce(
+    (acc, model) => {
+      if (!acc[model.provider]) acc[model.provider] = [];
+      acc[model.provider].push(model);
+      return acc;
+    },
+    {} as Record<string, AIModel[]>
+  );
+
+  const availableCount = models.filter((m) => m.is_available).length;
 
   if (isLoading) {
     return (
@@ -222,7 +366,7 @@ export default function ModelsPage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <p className="text-sm text-muted-foreground">
-          {models.length} models configured • {models.filter((m) => m.is_available).length} available
+          {models.length} models synced · {availableCount} enabled
         </p>
         <Button variant="outline" onClick={syncModels} disabled={isSyncing}>
           {isSyncing ? (
@@ -239,6 +383,17 @@ export default function ModelsPage() {
         </Button>
       </div>
 
+      {syncReport && (
+        <div className="rounded-lg border border-green-500/20 bg-green-500/10 p-4">
+          <p className="text-sm text-green-700 dark:text-green-400 flex items-center gap-2">
+            <Check className="h-4 w-4" />
+            Synced {syncReport.synced} models ({syncReport.newModels} new,{" "}
+            {syncReport.updatedModels} updated, {syncReport.excluded} embedding
+            excluded)
+          </p>
+        </div>
+      )}
+
       {error && (
         <div className="rounded-lg border border-destructive bg-destructive/10 p-4">
           <p className="text-sm text-destructive flex items-center gap-2">
@@ -248,66 +403,135 @@ export default function ModelsPage() {
         </div>
       )}
 
-      {Object.entries(modelsByProvider).map(([provider, providerModels]) => (
-        <div key={provider} className="space-y-3">
-          <h2 className="text-lg font-semibold capitalize">{provider}</h2>
-          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-            {providerModels.map((model) => (
-              <Card
-                key={model.id}
-                className={`cursor-pointer hover:border-primary/50 transition-colors ${
-                  !model.is_available ? "opacity-50" : ""
-                }`}
-                onClick={() => openEditor(model)}
-              >
-                <CardHeader className="pb-2">
-                  <div className="flex items-start justify-between gap-2">
-                    <div className="flex-1 min-w-0">
-                      <CardTitle className="text-base flex items-center gap-2">
-                        {getTypeIcon(model.model_type)}
-                        <span className="truncate">{model.display_name}</span>
-                      </CardTitle>
-                      <CardDescription className="mt-1 text-xs truncate">
-                        {model.model_id}
-                      </CardDescription>
-                    </div>
-                    <Badge variant="outline" className={getTypeColor(model.model_type)}>
-                      {model.model_type.toUpperCase()}
-                    </Badge>
-                  </div>
-                </CardHeader>
-                <CardContent>
-                  <div className="flex items-center gap-4 text-xs text-muted-foreground">
-                    <span>{formatNumber(model.context_window)} ctx</span>
-                    <span>{formatNumber(model.max_output_tokens)} out</span>
-                    <div className="flex items-center gap-1 ml-auto">
-                      {model.supports_streaming && (
-                        <Badge variant="secondary" className="text-[10px] px-1">
-                          <Zap className="h-2.5 w-2.5" />
+      {Object.entries(modelsByProvider)
+        .sort(([a], [b]) => a.localeCompare(b))
+        .map(([provider, providerModels]) => (
+          <div key={provider} className="space-y-3">
+            <h2 className="text-lg font-semibold capitalize">
+              {provider}{" "}
+              <span className="text-sm font-normal text-muted-foreground">
+                ({providerModels.length})
+              </span>
+            </h2>
+            <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+              {providerModels.map((model) => (
+                <Card
+                  key={model.id}
+                  className={`cursor-pointer hover:border-primary/50 transition-colors ${
+                    !model.is_available ? "opacity-50" : ""
+                  }`}
+                  onClick={() => openEditor(model)}
+                >
+                  <CardHeader className="pb-2">
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="flex-1 min-w-0">
+                        <CardTitle className="text-base flex items-center gap-2">
+                          {getTypeIcon(model.model_type)}
+                          <span className="truncate">
+                            {model.display_name}
+                          </span>
+                        </CardTitle>
+                        <CardDescription className="mt-1 text-xs truncate">
+                          {model.model_id}
+                        </CardDescription>
+                      </div>
+                      <div className="flex items-center gap-2 shrink-0">
+                        <Badge
+                          variant="outline"
+                          className={getTypeColor(model.model_type)}
+                        >
+                          {model.model_type.toUpperCase()}
                         </Badge>
-                      )}
-                      {model.supports_images && (
-                        <Badge variant="secondary" className="text-[10px] px-1">
-                          <Image className="h-2.5 w-2.5" />
-                        </Badge>
-                      )}
+                        <div onClick={(e) => toggleAvailability(model, e)}>
+                          <Switch
+                            checked={model.is_available}
+                            aria-label={`Toggle ${model.display_name} availability`}
+                          />
+                        </div>
+                      </div>
                     </div>
-                  </div>
-                  {model.system_prompt_tips && (
-                    <div className="mt-2 flex items-center gap-1 text-xs text-muted-foreground">
-                      <Info className="h-3 w-3" />
-                      <span className="truncate">Has prompting tips</span>
-                    </div>
-                  )}
-                </CardContent>
-              </Card>
-            ))}
-          </div>
-        </div>
-      ))}
+                  </CardHeader>
+                  <CardContent className="space-y-2">
+                    {/* Description */}
+                    {model.description && (
+                      <p className="text-xs text-muted-foreground line-clamp-2">
+                        {model.description}
+                      </p>
+                    )}
 
-      {/* Editor Dialog */}
-      <Dialog open={!!editingModel} onOpenChange={(open) => !open && closeEditor()}>
+                    {/* Pricing */}
+                    {formatPricing(model.pricing) && (
+                      <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                        <DollarSign className="h-3 w-3 shrink-0" />
+                        <span className="truncate">
+                          {formatPricing(model.pricing)}
+                        </span>
+                      </div>
+                    )}
+
+                    {/* Tags */}
+                    {model.tags && model.tags.length > 0 && (
+                      <div className="flex flex-wrap gap-1">
+                        {model.tags.map((tag) => (
+                          <Badge
+                            key={tag}
+                            variant="secondary"
+                            className="text-[10px] px-1.5 py-0 h-5 gap-1"
+                          >
+                            {getTagIcon(tag)}
+                            {tag}
+                          </Badge>
+                        ))}
+                      </div>
+                    )}
+
+                    {/* Specs row */}
+                    <div className="flex items-center gap-3 text-xs text-muted-foreground pt-1">
+                      {model.context_window && (
+                        <span>{formatNumber(model.context_window)} ctx</span>
+                      )}
+                      {model.max_output_tokens && (
+                        <span>
+                          {formatNumber(model.max_output_tokens)} out
+                        </span>
+                      )}
+                      <div className="flex items-center gap-1 ml-auto">
+                        {model.supports_streaming && (
+                          <Badge
+                            variant="secondary"
+                            className="text-[10px] px-1"
+                          >
+                            <Zap className="h-2.5 w-2.5" />
+                          </Badge>
+                        )}
+                        {formatDate(model.released_at) && (
+                          <span className="flex items-center gap-1 text-[10px]">
+                            <Calendar className="h-2.5 w-2.5" />
+                            {formatDate(model.released_at)}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Manual config indicator */}
+                    {model.system_prompt_tips && (
+                      <div className="flex items-center gap-1 text-xs text-muted-foreground">
+                        <Info className="h-3 w-3" />
+                        <span className="truncate">Has prompting tips</span>
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+          </div>
+        ))}
+
+      {/* Editor Dialog — manual fields only */}
+      <Dialog
+        open={!!editingModel}
+        onOpenChange={(open) => !open && closeEditor()}
+      >
         <DialogContent className="max-w-2xl max-h-[90vh] flex flex-col">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
@@ -319,41 +543,80 @@ export default function ModelsPage() {
 
           <ScrollArea className="flex-1">
             <div className="space-y-6 pr-4">
-              {/* Basic Info */}
+              {/* Read-only info summary */}
               <div className="grid grid-cols-2 gap-4 p-4 rounded-lg bg-muted/50">
                 <div>
-                  <Label className="text-xs text-muted-foreground">Provider</Label>
-                  <p className="font-medium capitalize">{editingModel?.provider}</p>
+                  <Label className="text-xs text-muted-foreground">
+                    Provider
+                  </Label>
+                  <p className="font-medium capitalize">
+                    {editingModel?.provider}
+                  </p>
                 </div>
                 <div>
-                  <Label className="text-xs text-muted-foreground">Type</Label>
-                  <p className="font-medium uppercase">{editingModel?.model_type}</p>
+                  <Label className="text-xs text-muted-foreground">
+                    Gateway Type
+                  </Label>
+                  <p className="font-medium">
+                    {editingModel?.gateway_type || "N/A"}
+                  </p>
                 </div>
                 <div>
-                  <Label className="text-xs text-muted-foreground">Context Window</Label>
-                  <p className="font-medium">{formatNumber(editingModel?.context_window || null)} tokens</p>
+                  <Label className="text-xs text-muted-foreground">
+                    Context Window
+                  </Label>
+                  <p className="font-medium">
+                    {formatNumber(editingModel?.context_window || null)} tokens
+                  </p>
                 </div>
                 <div>
-                  <Label className="text-xs text-muted-foreground">Max Output</Label>
-                  <p className="font-medium">{formatNumber(editingModel?.max_output_tokens || null)} tokens</p>
+                  <Label className="text-xs text-muted-foreground">
+                    Max Output
+                  </Label>
+                  <p className="font-medium">
+                    {formatNumber(editingModel?.max_output_tokens || null)}{" "}
+                    tokens
+                  </p>
                 </div>
-                <div className="flex items-center gap-2">
-                  <Badge variant={editingModel?.supports_streaming ? "default" : "secondary"}>
-                    {editingModel?.supports_streaming ? "Streaming" : "No Streaming"}
-                  </Badge>
-                  <Badge variant={editingModel?.supports_images ? "default" : "secondary"}>
-                    {editingModel?.supports_images ? "Images" : "No Images"}
-                  </Badge>
+                <div className="col-span-2 flex flex-wrap gap-2">
+                  {editingModel?.supports_streaming && (
+                    <Badge variant="default">Streaming</Badge>
+                  )}
+                  {editingModel?.supports_images && (
+                    <Badge variant="default">Images</Badge>
+                  )}
+                  {editingModel?.supports_thinking && (
+                    <Badge variant="default">Reasoning</Badge>
+                  )}
+                  {!editingModel?.supports_streaming && (
+                    <Badge variant="secondary">No Streaming</Badge>
+                  )}
                 </div>
-                <div className="flex items-center gap-2">
-                  <Label>Available</Label>
-                  <Switch
-                    checked={editorData.is_available}
-                    onCheckedChange={(checked) =>
-                      setEditorData({ ...editorData, is_available: checked })
-                    }
-                  />
-                </div>
+              </div>
+
+              <Separator />
+
+              {/* Model Type Override */}
+              <div className="space-y-2">
+                <Label>Model Type</Label>
+                <Select
+                  value={editorData.model_type || "text"}
+                  onValueChange={(v) =>
+                    setEditorData({ ...editorData, model_type: v })
+                  }
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="text">Text</SelectItem>
+                    <SelectItem value="image">Image</SelectItem>
+                    <SelectItem value="research">Research</SelectItem>
+                  </SelectContent>
+                </Select>
+                <p className="text-xs text-muted-foreground">
+                  Override the auto-inferred type if needed
+                </p>
               </div>
 
               <Separator />
@@ -367,7 +630,10 @@ export default function ModelsPage() {
                   <Textarea
                     value={editorData.system_prompt_tips || ""}
                     onChange={(e) =>
-                      setEditorData({ ...editorData, system_prompt_tips: e.target.value })
+                      setEditorData({
+                        ...editorData,
+                        system_prompt_tips: e.target.value,
+                      })
                     }
                     placeholder="Tips for writing effective prompts with this model..."
                     className="min-h-[100px]"
@@ -405,7 +671,9 @@ export default function ModelsPage() {
                       onChange={(e) =>
                         setEditorData({
                           ...editorData,
-                          default_temperature: e.target.value ? parseFloat(e.target.value) : null,
+                          default_temperature: e.target.value
+                            ? parseFloat(e.target.value)
+                            : null,
                         })
                       }
                       placeholder="0.7"
@@ -418,7 +686,10 @@ export default function ModelsPage() {
                   <Textarea
                     value={editorData.format_instructions || ""}
                     onChange={(e) =>
-                      setEditorData({ ...editorData, format_instructions: e.target.value })
+                      setEditorData({
+                        ...editorData,
+                        format_instructions: e.target.value,
+                      })
                     }
                     placeholder="Specific formatting instructions for this model..."
                     className="min-h-[80px]"
@@ -433,7 +704,9 @@ export default function ModelsPage() {
                     onChange={(e) =>
                       setEditorData({
                         ...editorData,
-                        default_max_tokens: e.target.value ? parseInt(e.target.value) : null,
+                        default_max_tokens: e.target.value
+                          ? parseInt(e.target.value)
+                          : null,
                       })
                     }
                     placeholder="4096"
@@ -442,25 +715,6 @@ export default function ModelsPage() {
               </div>
 
               <Separator />
-
-              {/* Type-Specific Config */}
-              {editingModel?.model_type === "image" && editingModel.image_config && (
-                <div className="space-y-4">
-                  <h3 className="font-medium">Image Configuration</h3>
-                  <pre className="p-4 rounded-lg bg-muted text-xs overflow-auto">
-                    {JSON.stringify(editingModel.image_config, null, 2)}
-                  </pre>
-                </div>
-              )}
-
-              {editingModel?.model_type === "research" && editingModel.research_config && (
-                <div className="space-y-4">
-                  <h3 className="font-medium">Research Configuration</h3>
-                  <pre className="p-4 rounded-lg bg-muted text-xs overflow-auto">
-                    {JSON.stringify(editingModel.research_config, null, 2)}
-                  </pre>
-                </div>
-              )}
 
               {/* API Notes */}
               <div className="space-y-2">
