@@ -117,33 +117,31 @@ export default function ModelsPage() {
   const [error, setError] = useState<string | null>(null);
   const [syncReport, setSyncReport] = useState<SyncReport | null>(null);
 
-  // Collapsible provider group state (persisted in localStorage)
-  const [pinnedProviders, setPinnedProviders] = useState<Set<string>>(() => {
-    if (typeof window === "undefined") return new Set();
-    try {
-      const stored = localStorage.getItem("cmp:models:pinned");
-      return stored ? new Set(JSON.parse(stored) as string[]) : new Set();
-    } catch {
-      return new Set();
-    }
-  });
-  const [expandedProviders, setExpandedProviders] = useState<Set<string>>(() => {
-    if (typeof window === "undefined") return new Set();
-    try {
-      const stored = localStorage.getItem("cmp:models:expanded");
-      return stored ? new Set(JSON.parse(stored) as string[]) : new Set();
-    } catch {
-      return new Set();
-    }
-  });
+  // Collapsible provider group state (persisted in localStorage, loaded after hydration)
+  const [pinnedProviders, setPinnedProviders] = useState<Set<string>>(new Set());
+  const [expandedProviders, setExpandedProviders] = useState<Set<string>>(new Set());
+  const [isHydrated, setIsHydrated] = useState(false);
 
-  // Persist pinned/expanded to localStorage
+  // Load from localStorage after mount (avoids SSR hydration mismatch)
   useEffect(() => {
+    try {
+      const pinned = localStorage.getItem("cmp:models:pinned");
+      if (pinned) setPinnedProviders(new Set(JSON.parse(pinned) as string[]));
+      const expanded = localStorage.getItem("cmp:models:expanded");
+      if (expanded) setExpandedProviders(new Set(JSON.parse(expanded) as string[]));
+    } catch { /* ignore corrupt localStorage */ }
+    setIsHydrated(true);
+  }, []);
+
+  // Persist to localStorage on change (only after initial hydration)
+  useEffect(() => {
+    if (!isHydrated) return;
     localStorage.setItem("cmp:models:pinned", JSON.stringify([...pinnedProviders]));
-  }, [pinnedProviders]);
+  }, [pinnedProviders, isHydrated]);
   useEffect(() => {
+    if (!isHydrated) return;
     localStorage.setItem("cmp:models:expanded", JSON.stringify([...expandedProviders]));
-  }, [expandedProviders]);
+  }, [expandedProviders, isHydrated]);
 
   const togglePin = (provider: string, e: React.MouseEvent) => {
     e.stopPropagation();
@@ -446,7 +444,7 @@ export default function ModelsPage() {
           {models.length} models synced · {availableCount} enabled · {sortedProviders.length} providers
         </p>
         <div className="flex items-center gap-2">
-          <Button variant="ghost" size="sm" onClick={toggleAllExpanded}>
+          <Button variant="ghost" size="sm" onClick={toggleAllExpanded} disabled={sortedProviders.length === 0}>
             <ChevronsUpDown className="mr-1.5 h-4 w-4" />
             {allExpanded ? "Collapse All" : "Expand All"}
           </Button>
@@ -498,38 +496,41 @@ export default function ModelsPage() {
             open={isExpanded}
             onOpenChange={() => toggleExpanded(provider)}
           >
-            <CollapsibleTrigger asChild>
-              <button className="flex w-full items-center gap-3 rounded-lg border border-border bg-muted/30 px-4 py-3 text-left transition-colors hover:bg-muted/60">
-                <span
-                  role="button"
-                  tabIndex={0}
-                  onClick={(e) => togglePin(provider, e)}
-                  onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); togglePin(provider, e as unknown as React.MouseEvent); } }}
-                  className="shrink-0 text-muted-foreground hover:text-yellow-500 transition-colors"
-                  aria-label={isPinned ? `Unpin ${provider}` : `Pin ${provider}`}
-                >
-                  <Star
-                    className={`h-4 w-4 ${isPinned ? "fill-yellow-500 text-yellow-500" : ""}`}
-                  />
-                </span>
-                <span className="text-base font-semibold capitalize flex-1">
-                  {provider}
-                </span>
-                <span className="text-sm text-muted-foreground">
-                  {providerModels.length} model{providerModels.length !== 1 ? "s" : ""}
-                  {enabledCount > 0 && (
-                    <span className="ml-1.5 text-primary">
-                      · {enabledCount} enabled
-                    </span>
-                  )}
-                </span>
-                {isExpanded ? (
-                  <ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground" />
-                ) : (
-                  <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" />
-                )}
+            <div className="flex w-full items-center gap-3 rounded-lg border border-border bg-muted/30 px-4 py-3">
+              <button
+                type="button"
+                onClick={(e) => togglePin(provider, e)}
+                className="shrink-0 text-muted-foreground hover:text-yellow-500 transition-colors"
+                aria-label={isPinned ? `Unpin ${provider}` : `Pin ${provider}`}
+              >
+                <Star
+                  className={`h-4 w-4 ${isPinned ? "fill-yellow-500 text-yellow-500" : ""}`}
+                />
               </button>
-            </CollapsibleTrigger>
+              <CollapsibleTrigger asChild>
+                <button
+                  type="button"
+                  className="flex flex-1 items-center gap-3 text-left transition-colors hover:text-foreground"
+                >
+                  <span className="text-base font-semibold capitalize flex-1">
+                    {provider}
+                  </span>
+                  <span className="text-sm text-muted-foreground">
+                    {providerModels.length} model{providerModels.length !== 1 ? "s" : ""}
+                    {enabledCount > 0 && (
+                      <span className="ml-1.5 text-primary">
+                        · {enabledCount} enabled
+                      </span>
+                    )}
+                  </span>
+                  {isExpanded ? (
+                    <ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground" />
+                  ) : (
+                    <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" />
+                  )}
+                </button>
+              </CollapsibleTrigger>
+            </div>
             <CollapsibleContent>
               <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3 pt-3">
                 {providerModels.map((model) => (
