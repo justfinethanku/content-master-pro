@@ -1,13 +1,21 @@
 import { NextResponse } from "next/server";
-import { createClient } from "@/lib/supabase/server";
+import { createClient, createServiceClient } from "@/lib/supabase/server";
 
 const AI_GATEWAY_MODELS_URL = "https://ai-gateway.vercel.sh/v1/models";
 
 interface GatewayModel {
   id: string;
   object: string;
-  created?: number;
+  name?: string;
+  description?: string;
+  type?: string; // "language" | "image" | "embedding"
+  tags?: string[];
+  context_window?: number;
+  max_tokens?: number;
+  pricing?: Record<string, unknown>;
+  released?: string;
   owned_by?: string;
+  created?: number;
 }
 
 interface GatewayResponse {
@@ -15,41 +23,57 @@ interface GatewayResponse {
   data: GatewayModel[];
 }
 
-// Known model metadata
-const MODEL_METADATA: Record<string, { display_name: string; supports_images?: boolean; context_window?: number }> = {
-  "anthropic/claude-sonnet-4-5": { display_name: "Claude Sonnet 4.5", context_window: 200000 },
-  "anthropic/claude-haiku-4-5": { display_name: "Claude Haiku 4.5", context_window: 200000 },
-  "anthropic/claude-opus-4-5": { display_name: "Claude Opus 4.5", context_window: 200000 },
-  "google/gemini-3-pro-image": { display_name: "Gemini 3 Pro Image (Nano Banana Pro)", supports_images: true },
-  "google/imagen-4.0-generate": { display_name: "Imagen 4.0 Generate", supports_images: true },
-  "openai/dall-e-3": { display_name: "DALL·E 3", supports_images: true },
-  "bfl/flux-2-pro": { display_name: "FLUX 2 Pro", supports_images: true },
-};
-
 function extractProvider(modelId: string): string {
   return modelId.split("/")[0] || "unknown";
 }
 
-function generateDisplayName(modelId: string): string {
-  const parts = modelId.split("/");
-  if (parts.length < 2) return modelId;
-  return parts[1]
-    .split("-")
-    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
-    .join(" ");
+/** Infer our model_type from gateway data */
+function inferModelType(model: GatewayModel): "text" | "image" | "research" {
+  if (model.type === "image") return "image";
+  const provider = extractProvider(model.id);
+  if (provider === "perplexity") return "research";
+  return "text";
+}
+
+/** Infer supports_thinking from tags */
+function inferSupportsThinking(tags: string[] | undefined): boolean {
+  return tags?.includes("reasoning") ?? false;
+}
+
+/** Infer supports_images from tags or type */
+function inferSupportsImages(model: GatewayModel): boolean {
+  if (model.type === "image") return true;
+  return model.tags?.includes("vision") ?? false;
+}
+
+/** Infer supports_streaming — image models typically don't stream */
+function inferSupportsStreaming(model: GatewayModel): boolean {
+  return model.type !== "image";
+}
+
+/** Parse release date string to ISO timestamp */
+function parseReleaseDate(released: string | undefined): string | null {
+  if (!released) return null;
+  try {
+    return new Date(released).toISOString();
+  } catch {
+    return null;
+  }
 }
 
 export async function POST() {
   try {
     // Check auth and admin role
     const supabase = await createClient();
-    const { data: { user }, error: authError } = await supabase.auth.getUser();
+    const {
+      data: { user },
+      error: authError,
+    } = await supabase.auth.getUser();
 
     if (authError || !user) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    // Check if user is admin
     const { data: profile } = await supabase
       .from("profiles")
       .select("role")
@@ -57,13 +81,19 @@ export async function POST() {
       .single();
 
     if (profile?.role !== "admin") {
-      return NextResponse.json({ error: "Admin access required" }, { status: 403 });
+      return NextResponse.json(
+        { error: "Admin access required" },
+        { status: 403 }
+      );
     }
 
     // Fetch models from Vercel AI Gateway
     const apiKey = process.env.VERCEL_AI_GATEWAY_API_KEY;
     if (!apiKey) {
-      return NextResponse.json({ error: "VERCEL_AI_GATEWAY_API_KEY not configured" }, { status: 500 });
+      return NextResponse.json(
+        { error: "VERCEL_AI_GATEWAY_API_KEY not configured" },
+        { status: 500 }
+      );
     }
 
     const response = await fetch(AI_GATEWAY_MODELS_URL, {
@@ -79,47 +109,107 @@ export async function POST() {
 
     const gatewayData = (await response.json()) as GatewayResponse;
 
-    // Get existing models
-    const { data: existingModels } = await supabase
+    // Exclude embedding models
+    const nonEmbedding = gatewayData.data.filter(
+      (m) => m.type !== "embedding"
+    );
+    const excludedCount =
+      gatewayData.data.length - nonEmbedding.length;
+
+    // Use service client for upsert (bypasses RLS)
+    const serviceClient = await createServiceClient();
+
+    // Get existing models to track new vs updated
+    const { data: existingModels } = await serviceClient
       .from("ai_models")
       .select("model_id");
 
-    const existingIds = new Set(existingModels?.map((m) => m.model_id) || []);
+    const existingIds = new Set(
+      existingModels?.map((m) => m.model_id) || []
+    );
 
-    // Transform and filter new models
-    const newModels = gatewayData.data
-      .filter((m) => !existingIds.has(m.id))
-      .map((m) => {
-        const metadata = MODEL_METADATA[m.id] || {};
-        return {
+    let newCount = 0;
+    let updatedCount = 0;
+    const batchSize = 50;
+
+    // Separate new vs existing
+    const newModels = nonEmbedding.filter((m) => !existingIds.has(m.id));
+    const existingToUpdate = nonEmbedding.filter((m) =>
+      existingIds.has(m.id)
+    );
+
+    // Step 1: Insert new models (is_available defaults to false via migration)
+    if (newModels.length > 0) {
+      for (let i = 0; i < newModels.length; i += batchSize) {
+        const batch = newModels.slice(i, i + batchSize);
+        const rows = batch.map((m) => ({
           model_id: m.id,
           provider: extractProvider(m.id),
-          display_name: metadata.display_name || generateDisplayName(m.id),
-          context_window: metadata.context_window || null,
-          supports_images: metadata.supports_images || false,
-          supports_streaming: !(metadata.supports_images || false), // Image models typically don't stream
-          is_available: true,
-        };
-      });
+          display_name: m.name || m.id.split("/").pop() || m.id,
+          description: m.description || null,
+          model_type: inferModelType(m),
+          context_window: m.context_window || null,
+          max_output_tokens: m.max_tokens || null,
+          supports_images: inferSupportsImages(m),
+          supports_streaming: inferSupportsStreaming(m),
+          supports_thinking: inferSupportsThinking(m.tags),
+          pricing: m.pricing || null,
+          tags: m.tags || [],
+          released_at: parseReleaseDate(m.released),
+          gateway_type: m.type || null,
+          // is_available defaults to false via migration
+        }));
 
-    // Insert new models
-    if (newModels.length > 0) {
-      const { error: insertError } = await supabase.from("ai_models").insert(newModels);
+        const { error: insertError } = await serviceClient
+          .from("ai_models")
+          .insert(rows);
 
-      if (insertError) {
-        return NextResponse.json(
-          { error: `Failed to insert models: ${insertError.message}` },
-          { status: 500 }
-        );
+        if (insertError) {
+          return NextResponse.json(
+            { error: `Insert failed: ${insertError.message}` },
+            { status: 500 }
+          );
+        }
+      }
+      newCount = newModels.length;
+    }
+
+    // Step 2: Update existing models — only gateway-sourced fields
+    for (const m of existingToUpdate) {
+      const { error: updateError } = await serviceClient
+        .from("ai_models")
+        .update({
+          display_name: m.name || m.id.split("/").pop() || m.id,
+          description: m.description || null,
+          context_window: m.context_window || null,
+          max_output_tokens: m.max_tokens || null,
+          supports_images: inferSupportsImages(m),
+          supports_streaming: inferSupportsStreaming(m),
+          supports_thinking: inferSupportsThinking(m.tags),
+          pricing: m.pricing || null,
+          tags: m.tags || [],
+          released_at: parseReleaseDate(m.released),
+          gateway_type: m.type || null,
+          // Preserved: is_available, model_type, system_prompt_tips,
+          // preferred_format, format_instructions, quirks, api_notes,
+          // default_temperature, default_max_tokens, image_config, research_config
+        })
+        .eq("model_id", m.id);
+
+      if (updateError) {
+        console.error(`Failed to update ${m.id}:`, updateError);
+      } else {
+        updatedCount++;
       }
     }
 
     return NextResponse.json({
       success: true,
       totalFromApi: gatewayData.data.length,
-      existingCount: existingIds.size,
-      newModelsAdded: newModels.length,
-      newModels: newModels.map((m) => m.model_id),
+      excluded: excludedCount,
+      synced: nonEmbedding.length,
+      newModels: newCount,
+      updatedModels: updatedCount,
     });
   } catch (error) {
     console.error("Model sync error:", error);

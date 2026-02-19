@@ -35,6 +35,7 @@ interface PromptSet {
   description: string | null;
   current_version_id: string | null;
   pipeline_stage: string | null;
+  model_type_filter: string | null;
 }
 
 interface PromptVersion {
@@ -59,6 +60,7 @@ interface AIModel {
   provider: string;
   display_name: string;
   supports_thinking: boolean;
+  model_type: string;
 }
 
 export default function PromptEditorPage() {
@@ -83,6 +85,9 @@ export default function PromptEditorPage() {
   const [saveSuccess, setSaveSuccess] = useState(false);
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
 
+  // Model type filter
+  const [editorModelTypeFilter, setEditorModelTypeFilter] = useState<string>("text");
+
   // Version history
   const [allVersions, setAllVersions] = useState<PromptVersion[]>([]);
   const [showVersionHistory, setShowVersionHistory] = useState(false);
@@ -106,6 +111,7 @@ export default function PromptEditorPage() {
 
         if (promptError) throw promptError;
         setPrompt(promptData);
+        setEditorModelTypeFilter(promptData.model_type_filter || "text");
 
         // Load current version
         if (promptData.current_version_id) {
@@ -126,11 +132,12 @@ export default function PromptEditorPage() {
           }
         }
 
-        // Load AI models
+        // Load AI models (all available models — filtered by type in UI)
         const { data: aiModels } = await supabase
           .from("ai_models")
-          .select("id, model_id, provider, display_name, supports_thinking")
+          .select("id, model_id, provider, display_name, supports_thinking, model_type")
           .eq("is_available", true)
+          .order("provider")
           .order("display_name");
 
         setModels(aiModels || []);
@@ -290,10 +297,13 @@ export default function PromptEditorPage() {
 
       if (insertError) throw insertError;
 
-      // Update prompt_set
+      // Update prompt_set (version + type filter)
       await supabase
         .from("prompt_sets")
-        .update({ current_version_id: newVersionData.id })
+        .update({
+          current_version_id: newVersionData.id,
+          model_type_filter: editorModelTypeFilter,
+        })
         .eq("id", prompt.id);
 
       setCurrentVersion(newVersionData);
@@ -310,7 +320,7 @@ export default function PromptEditorPage() {
     } finally {
       setIsSaving(false);
     }
-  }, [prompt, editorContent, editorModelId, editorTemperature, editorMaxTokens, editorReasoningEnabled, editorReasoningBudget, supabase]);
+  }, [prompt, editorContent, editorModelId, editorTemperature, editorMaxTokens, editorReasoningEnabled, editorReasoningBudget, editorModelTypeFilter, supabase]);
 
   const getStageColor = (stage: string | null): string => {
     switch (stage) {
@@ -325,11 +335,25 @@ export default function PromptEditorPage() {
     }
   };
 
+  // Filter models by selected type
+  const filteredModels = useMemo(() => {
+    return models.filter((m) => m.model_type === editorModelTypeFilter);
+  }, [models, editorModelTypeFilter]);
+
   // Check if selected model supports extended thinking
   const selectedModelSupportsThinking = useMemo(() => {
     const selectedModel = models.find(m => m.id === editorModelId);
     return selectedModel?.supports_thinking ?? false;
   }, [models, editorModelId]);
+
+  // Handle type filter change — clear model if it doesn't match new type
+  const handleModelTypeFilterChange = (newType: string) => {
+    setEditorModelTypeFilter(newType);
+    const currentModel = models.find((m) => m.id === editorModelId);
+    if (currentModel && currentModel.model_type !== newType) {
+      setEditorModelId("");
+    }
+  };
 
   if (isLoading) {
     return (
@@ -495,6 +519,23 @@ export default function PromptEditorPage() {
           <div className="flex-1 flex flex-col p-6 overflow-hidden min-h-0">
             {/* Model Config */}
             <div className="space-y-4 mb-4 shrink-0">
+              {/* Model Type Filter */}
+              <div className="flex items-center gap-1 p-1 bg-muted rounded-lg w-fit">
+                {(["text", "image", "research"] as const).map((type) => (
+                  <button
+                    key={type}
+                    onClick={() => handleModelTypeFilterChange(type)}
+                    className={`px-4 py-1.5 text-sm font-medium rounded-md transition-colors ${
+                      editorModelTypeFilter === type
+                        ? "bg-background text-foreground shadow-sm"
+                        : "text-muted-foreground hover:text-foreground"
+                    }`}
+                  >
+                    {type.charAt(0).toUpperCase() + type.slice(1)}
+                  </button>
+                ))}
+              </div>
+
               <div className="grid grid-cols-3 gap-4">
                 <div className="space-y-2">
                   <Label>Model</Label>
@@ -503,7 +544,7 @@ export default function PromptEditorPage() {
                       <SelectValue placeholder="Select model" />
                     </SelectTrigger>
                     <SelectContent>
-                      {models.map((model) => (
+                      {filteredModels.map((model) => (
                         <SelectItem key={model.id} value={model.id}>
                           {model.display_name}
                           {model.supports_thinking && (
