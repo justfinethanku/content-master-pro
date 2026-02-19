@@ -130,14 +130,7 @@ export function useGenerate() {
       }));
 
       try {
-        // Get current session for auth token
-        const {
-          data: { session },
-        } = await supabase.auth.getSession();
-
-        if (!session?.access_token) {
-          throw new Error("Not authenticated");
-        }
+        const accessToken = await getAccessToken(supabase);
 
         const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
         if (!supabaseUrl) {
@@ -147,22 +140,24 @@ export function useGenerate() {
         // Handle streaming requests
         if (options.stream) {
           return await handleStreamingRequest(
+            supabase,
             supabaseUrl,
-            session.access_token,
+            accessToken,
             options,
             setState
           );
         }
 
-        // Non-streaming request
-        const response = await fetch(`${supabaseUrl}/functions/v1/generate`, {
-          method: "POST",
-          headers: {
-            Authorization: `Bearer ${session.access_token}`,
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify(options),
-        });
+        // Non-streaming request with one auth refresh retry on 401.
+        let response = await makeGenerateRequest(supabaseUrl, accessToken, options);
+        if (response.status === 401) {
+          const refreshedToken = await getAccessToken(supabase, true);
+          response = await makeGenerateRequest(supabaseUrl, refreshedToken, options);
+        }
+
+        if (!response.ok) {
+          throw new Error(await formatGenerateError(response));
+        }
 
         const result: GenerateResult = await response.json();
 
@@ -216,23 +211,20 @@ export function useGenerate() {
  * Handle streaming SSE response
  */
 async function handleStreamingRequest(
+  supabase: ReturnType<typeof createClient>,
   supabaseUrl: string,
   accessToken: string,
   options: GenerateOptions,
   setState: React.Dispatch<React.SetStateAction<GenerateState>>
 ): Promise<GenerateResult | null> {
-  const response = await fetch(`${supabaseUrl}/functions/v1/generate`, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${accessToken}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify(options),
-  });
+  let response = await makeGenerateRequest(supabaseUrl, accessToken, options);
+  if (response.status === 401) {
+    const refreshedToken = await getAccessToken(supabase, true);
+    response = await makeGenerateRequest(supabaseUrl, refreshedToken, options);
+  }
 
   if (!response.ok) {
-    const errorText = await response.text();
-    throw new Error(`Generation failed: ${errorText}`);
+    throw new Error(await formatGenerateError(response));
   }
 
   const reader = response.body?.getReader();
@@ -315,6 +307,85 @@ async function handleStreamingRequest(
 }
 
 /**
+ * Resolve an access token and proactively refresh when needed.
+ * Uses one forced refresh path so Edge Function calls don't send stale JWTs.
+ */
+async function getAccessToken(
+  supabase: ReturnType<typeof createClient>,
+  forceRefresh = false
+): Promise<string> {
+  const {
+    data: { session },
+  } = await supabase.auth.getSession();
+
+  const nowInSeconds = Math.floor(Date.now() / 1000);
+  const expiresSoon =
+    !!session?.expires_at && session.expires_at - nowInSeconds < 60;
+
+  if (!forceRefresh && session?.access_token && !expiresSoon) {
+    return session.access_token;
+  }
+
+  const {
+    data: { user },
+    error: userError,
+  } = await supabase.auth.getUser();
+  if (userError || !user) {
+    throw new Error("Not authenticated");
+  }
+
+  const {
+    data: refreshData,
+    error: refreshError,
+  } = await supabase.auth.refreshSession();
+
+  const refreshedToken = refreshData.session?.access_token;
+  if (refreshError || !refreshedToken) {
+    if (session?.access_token && !forceRefresh) {
+      return session.access_token;
+    }
+    throw new Error("Not authenticated");
+  }
+
+  return refreshedToken;
+}
+
+/**
+ * Make a request to the generate endpoint.
+ */
+async function makeGenerateRequest(
+  supabaseUrl: string,
+  accessToken: string,
+  options: GenerateOptions
+): Promise<Response> {
+  return fetch(`${supabaseUrl}/functions/v1/generate`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(options),
+  });
+}
+
+/**
+ * Convert an HTTP error response to a readable error string.
+ */
+async function formatGenerateError(response: Response): Promise<string> {
+  const body = await response.text();
+  let detail: string;
+
+  try {
+    const json = JSON.parse(body);
+    detail = json.error || json.message || body;
+  } catch {
+    detail = body;
+  }
+
+  return `Generation failed (${response.status}): ${detail}`;
+}
+
+/**
  * Convenience hook for text generation with automatic JSON parsing
  *
  * Properly propagates errors so calling code can display them to users.
@@ -373,7 +444,7 @@ export function useGenerateJSON<T>() {
         }
 
         return parsed;
-      } catch (e) {
+      } catch {
         const parseError = new Error(
           `Failed to parse AI response as JSON. Response started with: "${result.content.slice(0, 100)}..."`
         );
