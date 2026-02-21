@@ -183,11 +183,18 @@ export function useDeliverableAsset(assetId: string | null) {
 }
 
 /**
- * Fetch all prompt kit assets for a given project (asset_type = "promptkit")
+ * Generic: fetch all assets of a given type for a project
  */
-export function useProjectPromptKits(projectId: string | null) {
+export function useProjectAssetsByType(
+  projectId: string | null,
+  assetType: string,
+) {
   return useQuery({
-    queryKey: [...deliverableKeys.detail(projectId ?? ""), "prompt-kits"],
+    queryKey: [
+      ...deliverableKeys.detail(projectId ?? ""),
+      "assets-by-type",
+      assetType,
+    ],
     queryFn: async (): Promise<ProjectAsset[]> => {
       if (!projectId) return [];
 
@@ -197,7 +204,7 @@ export function useProjectPromptKits(projectId: string | null) {
         .from("project_assets")
         .select("*")
         .eq("project_id", projectId)
-        .eq("asset_type", "promptkit")
+        .eq("asset_type", assetType)
         .order("created_at", { ascending: true });
 
       if (error) throw error;
@@ -205,6 +212,20 @@ export function useProjectPromptKits(projectId: string | null) {
     },
     enabled: !!projectId,
   });
+}
+
+/**
+ * Fetch all prompt kit assets for a given project
+ */
+export function useProjectPromptKits(projectId: string | null) {
+  return useProjectAssetsByType(projectId, "promptkit");
+}
+
+/**
+ * Fetch all guide assets for a given project
+ */
+export function useProjectGuides(projectId: string | null) {
+  return useProjectAssetsByType(projectId, "guide");
 }
 
 /**
@@ -356,7 +377,8 @@ export function useCreatePromptKitAsset() {
       queryClient.invalidateQueries({
         queryKey: [
           ...deliverableKeys.detail(variables.projectId),
-          "prompt-kits",
+          "assets-by-type",
+          "promptkit",
         ],
       });
     },

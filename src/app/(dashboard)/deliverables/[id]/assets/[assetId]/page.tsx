@@ -4,7 +4,7 @@ import { useState, useRef, useCallback, useEffect } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import TurndownService from "turndown";
-import { useDeliverableAsset, useProjectPromptKits, useCreatePromptKitAsset, useUpdateAssetName } from "@/hooks/use-deliverables";
+import { useDeliverableAsset, useProjectPromptKits, useProjectGuides, useCreatePromptKitAsset, useUpdateAssetName } from "@/hooks/use-deliverables";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { createClient } from "@/lib/supabase/client";
 import { deliverableKeys } from "@/hooks/use-deliverables";
@@ -201,18 +201,25 @@ function AssetEditorInner({
   const { data: versions = [] } = useAssetVersions(asset.id);
   const hasMultipleVersions = versions.length > 1;
 
-  // Fetch prompt kit siblings — skip if the current asset IS a prompt kit
+  // Fetch prompt kit and guide siblings — skip if the current asset IS one
   const isPromptKit = asset.asset_type === "promptkit";
+  const isGuide = asset.asset_type === "guide";
+  const canHavePreamble = asset.asset_type === "post";
   const { data: promptKits = [] } = useProjectPromptKits(
-    isPromptKit ? null : projectId
+    canHavePreamble ? projectId : null
+  );
+  const { data: guides = [] } = useProjectGuides(
+    canHavePreamble ? projectId : null
   );
 
-  const hasPromptKits = !isPromptKit && promptKits.length > 0;
+  const hasPromptKits = canHavePreamble && promptKits.length > 0;
+  const hasResources = canHavePreamble && (promptKits.length > 0 || guides.length > 0);
 
   // Preamble detection
   const hasPreamble = !!(
     (meta?.preamble_added_at) ||
-    currentContent.includes("[Grab the prompts](https://promptkit.natebjones.com/")
+    currentContent.includes("[Grab the prompts](https://promptkit.natebjones.com/") ||
+    currentContent.includes("[Read the guide](https://promptkit.natebjones.com/")
   );
 
   // AI generation for prompt kit conversion
@@ -299,12 +306,23 @@ function AssetEditorInner({
   } = useGenerate();
 
   const handleAddPreamble = useCallback(async () => {
-    if (!promptKits.length) return;
+    if (!promptKits.length && !guides.length) return;
     setGeneratingPreamble(true);
     setShowPromptKit(true);
     resetPreamble();
 
-    const promptKitLink = `https://promptkit.natebjones.com/${promptKits[0].asset_id}`;
+    // Build resources CTA from available companion assets
+    const ctaParts: string[] = [];
+    const promptKitLink = promptKits.length
+      ? `https://promptkit.natebjones.com/${promptKits[0].asset_id}`
+      : null;
+    const guideLink = guides.length
+      ? `https://promptkit.natebjones.com/${guides[0].asset_id}`
+      : null;
+
+    if (promptKitLink) ctaParts.push(`[Grab the prompts](${promptKitLink})`);
+    if (guideLink) ctaParts.push(`[Read the guide](${guideLink})`);
+    const resourcesCta = ctaParts.join(" · ");
 
     // Strip old preamble if regenerating (everything before first --- separator)
     const bodyContent = hasPreamble && currentContent.includes("\n\n---\n\n")
@@ -313,7 +331,7 @@ function AssetEditorInner({
 
     const result = await generatePreamble({
       prompt_slug: "post_preamble_generator",
-      variables: { content: bodyContent, prompt_kit_link: promptKitLink },
+      variables: { content: bodyContent, resources_cta: resourcesCta },
       stream: true,
     });
 
@@ -336,7 +354,9 @@ function AssetEditorInner({
           metadata: {
             ...(meta || {}),
             preamble_added_at: new Date().toISOString(),
-            prompt_kit_link: promptKitLink,
+            prompt_kit_link: promptKitLink ?? null,
+            guide_link: guideLink ?? null,
+            resources_cta: resourcesCta,
           },
         })
         .eq("id", asset.id);
@@ -367,7 +387,7 @@ function AssetEditorInner({
     } else {
       setGeneratingPreamble(false);
     }
-  }, [currentContent, hasPreamble, promptKits, asset.id, asset.version, meta, projectId, generatePreamble, resetPreamble, queryClient, showToast]);
+  }, [currentContent, hasPreamble, promptKits, guides, asset.id, asset.version, meta, projectId, generatePreamble, resetPreamble, queryClient, showToast]);
 
   // Regenerate an existing prompt kit
   const handleRegeneratePromptKit = useCallback(async (instructions?: string) => {
@@ -414,7 +434,7 @@ function AssetEditorInner({
       }
 
       queryClient.invalidateQueries({ queryKey: deliverableKeys.detail(projectId) });
-      queryClient.invalidateQueries({ queryKey: [...deliverableKeys.detail(projectId), "prompt-kits"] });
+      queryClient.invalidateQueries({ queryKey: [...deliverableKeys.detail(projectId), "assets-by-type", "promptkit"] });
       queryClient.invalidateQueries({ queryKey: versionKeys.list(pk.id) });
 
       setConverting(false);
@@ -429,14 +449,16 @@ function AssetEditorInner({
     mutationFn: async () => {
       const supabase = createClient();
 
-      // Delete associated prompt kits first (if this is a post, not a prompt kit)
-      if (!isPromptKit && promptKits.length > 0) {
-        const promptKitIds = promptKits.map((pk) => pk.id);
-        const { error: pkError } = await supabase
-          .from("project_assets")
-          .delete()
-          .in("id", promptKitIds);
-        if (pkError) throw pkError;
+      // Delete associated companion assets (prompt kits + guides) when deleting a post
+      if (canHavePreamble) {
+        const companionIds = [...promptKits, ...guides].map((a) => a.id);
+        if (companionIds.length > 0) {
+          const { error: companionError } = await supabase
+            .from("project_assets")
+            .delete()
+            .in("id", companionIds);
+          if (companionError) throw companionError;
+        }
       }
 
       // Delete the asset itself (asset_versions cascade-delete via FK)
@@ -632,7 +654,7 @@ function AssetEditorInner({
         {/* Actions */}
         <div className="flex flex-wrap items-center gap-2 shrink-0">
           {/* Preamble button */}
-          {hasPromptKits && !isPromptKit && !generatingPreamble && currentContent && !viewingVersionId && (
+          {hasResources && !generatingPreamble && currentContent && !viewingVersionId && (
             <button
               onClick={handleAddPreamble}
               className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md bg-primary/10 text-primary hover:bg-primary/20 transition min-h-[36px]"
@@ -678,7 +700,7 @@ function AssetEditorInner({
                 <span>Open Prompt Kit</span>
               </Link>
             </>
-          ) : !isPromptKit && !converting && !viewingVersionId && (
+          ) : !isPromptKit && !isGuide && !converting && !viewingVersionId && (
             <>
               {currentContent && (
                 <button
@@ -800,9 +822,9 @@ function AssetEditorInner({
               <AlertDialogHeader>
                 <AlertDialogTitle>Delete this asset?</AlertDialogTitle>
                 <AlertDialogDescription>
-                  {hasPromptKits ? (
+                  {hasPromptKits || guides.length > 0 ? (
                     <>
-                      This will permanently delete <strong>{asset.name}</strong> and its companion <strong>prompt kit</strong>. All versions will be lost. This cannot be undone.
+                      This will permanently delete <strong>{asset.name}</strong> and its companion assets ({[hasPromptKits && "prompt kit", guides.length > 0 && "guide"].filter(Boolean).join(", ")}). All versions will be lost. This cannot be undone.
                     </>
                   ) : (
                     <>
