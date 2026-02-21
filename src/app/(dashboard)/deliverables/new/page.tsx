@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import TurndownService from "turndown";
 import { useCreateProject } from "@/hooks/use-deliverables";
+import { useAssetConfig } from "@/hooks/use-asset-config";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ArrowLeft, Loader2 } from "lucide-react";
@@ -37,6 +38,7 @@ function countWords(text: string): number {
 export default function NewDeliverablePage() {
   const router = useRouter();
   const createProject = useCreateProject();
+  const { config: assetConfig } = useAssetConfig();
 
   const [title, setTitle] = useState("");
   const [content, setContent] = useState("");
@@ -88,11 +90,15 @@ export default function NewDeliverablePage() {
     const finalTitle = title.trim() || "Untitled";
     const wordCount = countWords(content);
 
+    const { asset_type, platform, variant } = assetConfig.defaults.new_project;
     createProject.mutate(
       {
         name: finalTitle,
         content,
         metadata: { word_count: wordCount },
+        initialAssetType: asset_type,
+        initialPlatform: platform,
+        initialVariant: variant,
       },
       {
         onSuccess: (project) => {
