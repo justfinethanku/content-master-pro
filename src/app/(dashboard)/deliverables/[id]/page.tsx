@@ -87,7 +87,9 @@ function AssetCard({
 
   const cardClass = cn(
     "rounded-lg border border-border bg-card p-3 sm:p-4 space-y-2 block overflow-hidden",
-    "hover:border-primary/40 hover:bg-muted/50 transition-colors cursor-pointer"
+    "hover:border-primary/40 hover:bg-muted/50 transition-colors cursor-pointer",
+    asset.asset_type === "guide" && "bg-[#486847]/[0.06] dark:bg-[#486847]/[0.12]",
+    asset.asset_type === "promptkit" && "bg-[#4a6488]/[0.06] dark:bg-[#4a6488]/[0.12]",
   );
 
   const cardContent = (
