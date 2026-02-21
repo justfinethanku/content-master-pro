@@ -13,7 +13,7 @@ export function createSubscriberMcpServer(supabase: AnySupabase): McpServer {
       version: "1.0.0",
     },
     {
-      instructions: `You are connected to the Executive Circle — a read-only content library from the "Limited Edition Jonathan" and Nate's Newsletter archives.
+      instructions: `You are connected to the Executive Circle — a read-only content library from Nate's Newsletter archives.
 
 ## What you can do
 
