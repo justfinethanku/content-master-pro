@@ -4,9 +4,14 @@ import { useState, useRef, useEffect, useCallback } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { useDeliverable, useUpdateProjectName, useUpdateProjectUrl, useUpdateProjectStatus, useDeleteProject } from "@/hooks/use-deliverables";
-import type { ProjectAsset, ProjectStatus } from "@/lib/types";
+import { useCreateAsset } from "@/hooks/use-assets";
+import { useAssetConfig } from "@/hooks/use-asset-config";
+import { buildAssetId, getActiveTypes, getActivePlatforms } from "@/lib/asset-config";
+import type { ProjectAsset, ProjectStatus, ProjectAssetInsert } from "@/lib/types";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -18,6 +23,15 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
 import {
   Select,
   SelectContent,
@@ -32,8 +46,10 @@ import {
   Calendar,
   ExternalLink,
   FileText,
+  Loader2,
   Package,
   Pencil,
+  Plus,
   Trash2,
 } from "lucide-react";
 
@@ -353,6 +369,193 @@ function InlineUrl({
   );
 }
 
+function AddAssetDialog({
+  projectId,
+  projectHumanId,
+  existingAssets,
+}: {
+  projectId: string;
+  projectHumanId: string;
+  existingAssets: ProjectAsset[];
+}) {
+  const [open, setOpen] = useState(false);
+  const [name, setName] = useState("");
+  const [assetType, setAssetType] = useState("");
+  const [platform, setPlatform] = useState("");
+  const [error, setError] = useState<string | null>(null);
+
+  const { config: assetConfig } = useAssetConfig();
+  const createAsset = useCreateAsset();
+
+  const activeTypes = getActiveTypes(assetConfig);
+  const activePlatforms = getActivePlatforms(assetConfig);
+
+  const selectedType = assetConfig.types.find((t) => t.key === assetType);
+  const showPlatform = selectedType?.supports_platform ?? false;
+
+  // Set defaults from config when dialog opens
+  useEffect(() => {
+    if (open) {
+      const defaults = assetConfig.defaults.add_asset_dialog;
+      setAssetType(defaults.asset_type);
+      setPlatform(defaults.platform);
+      setName("");
+      setError(null);
+    }
+  }, [open, assetConfig.defaults.add_asset_dialog]);
+
+  // Preview the asset_id
+  const previewAssetId = assetType
+    ? buildAssetId(projectHumanId, assetType, showPlatform ? platform : null, "main")
+    : "";
+
+  async function handleSubmit() {
+    if (!name.trim() || !assetType) return;
+    setError(null);
+
+    const effectivePlatform = showPlatform ? platform || null : null;
+
+    // Find a unique variant by checking existing assets
+    let variant = "main";
+    const existingIds = new Set(existingAssets.map((a) => a.asset_id));
+    let candidateId = buildAssetId(projectHumanId, assetType, effectivePlatform, variant);
+
+    if (existingIds.has(candidateId)) {
+      // Increment numeric variant until we find a gap
+      let n = 2;
+      do {
+        variant = String(n).padStart(2, "0");
+        candidateId = buildAssetId(projectHumanId, assetType, effectivePlatform, variant);
+        n++;
+      } while (existingIds.has(candidateId) && n < 100);
+    }
+
+    const insert: ProjectAssetInsert = {
+      project_id: projectId,
+      asset_id: candidateId,
+      name: name.trim(),
+      asset_type: assetType,
+      platform: effectivePlatform,
+      variant,
+      status: "draft",
+      metadata: {},
+    };
+
+    createAsset.mutate(insert, {
+      onSuccess: () => {
+        setOpen(false);
+      },
+      onError: (err) => {
+        const msg = (err as Error).message;
+        // Handle DB unique constraint violation with retry
+        if (msg.includes("23505") || msg.includes("duplicate")) {
+          const retryId = `${candidateId}_${Date.now().toString(36)}`;
+          createAsset.mutate(
+            { ...insert, asset_id: retryId },
+            {
+              onSuccess: () => setOpen(false),
+              onError: (retryErr) =>
+                setError(`Failed to add asset: ${(retryErr as Error).message}`),
+            }
+          );
+        } else {
+          setError(`Failed to add asset: ${msg}`);
+        }
+      },
+    });
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogTrigger asChild>
+        <Button variant="outline" size="sm">
+          <Plus className="h-4 w-4 mr-1" />
+          Add asset
+        </Button>
+      </DialogTrigger>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle>Add asset</DialogTitle>
+          <DialogDescription>
+            Add a new asset to this project.
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="space-y-4 py-2">
+          <div className="space-y-2">
+            <Label htmlFor="asset-name">Name</Label>
+            <Input
+              id="asset-name"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder="e.g. YouTube transcript"
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && name.trim() && assetType) handleSubmit();
+              }}
+            />
+          </div>
+
+          <div className="space-y-2">
+            <Label>Type</Label>
+            <Select value={assetType} onValueChange={setAssetType}>
+              <SelectTrigger>
+                <SelectValue placeholder="Select type" />
+              </SelectTrigger>
+              <SelectContent>
+                {activeTypes.map((t) => (
+                  <SelectItem key={t.key} value={t.key}>
+                    {t.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          {showPlatform && (
+            <div className="space-y-2">
+              <Label>Platform</Label>
+              <Select value={platform} onValueChange={setPlatform}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Select platform" />
+                </SelectTrigger>
+                <SelectContent>
+                  {activePlatforms.map((p) => (
+                    <SelectItem key={p.key} value={p.key}>
+                      {p.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
+
+          {previewAssetId && (
+            <p className="text-xs text-muted-foreground font-mono">
+              ID: {previewAssetId}
+            </p>
+          )}
+
+          {error && (
+            <p className="text-sm text-destructive">{error}</p>
+          )}
+        </div>
+
+        <DialogFooter>
+          <Button
+            onClick={handleSubmit}
+            disabled={!name.trim() || !assetType || createAsset.isPending}
+          >
+            {createAsset.isPending && (
+              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+            )}
+            Add asset
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 export default function DeliverableDetailPage() {
   const params = useParams();
   const router = useRouter();
@@ -508,9 +711,16 @@ export default function DeliverableDetailPage() {
 
       {/* Assets */}
       <div className="space-y-3">
-        <h2 className="text-lg font-semibold text-foreground">
-          Assets ({assets.length})
-        </h2>
+        <div className="flex items-center justify-between">
+          <h2 className="text-lg font-semibold text-foreground">
+            Assets ({assets.length})
+          </h2>
+          <AddAssetDialog
+            projectId={project.id}
+            projectHumanId={project.project_id}
+            existingAssets={assets}
+          />
+        </div>
 
         {assets.length === 0 ? (
           <div className="rounded-lg border border-dashed border-border p-8 text-center text-sm text-muted-foreground">
