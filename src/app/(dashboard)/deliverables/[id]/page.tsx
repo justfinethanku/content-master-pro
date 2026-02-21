@@ -372,11 +372,9 @@ function InlineUrl({
 function AddAssetDialog({
   projectId,
   projectHumanId,
-  existingAssets,
 }: {
   projectId: string;
   projectHumanId: string;
-  existingAssets: ProjectAsset[];
 }) {
   const [open, setOpen] = useState(false);
   const [name, setName] = useState("");
@@ -392,43 +390,37 @@ function AddAssetDialog({
 
   const selectedType = assetConfig.types.find((t) => t.key === assetType);
   const showPlatform = selectedType?.supports_platform ?? false;
+  const defaultVariant = selectedType?.default_variant ?? assetConfig.defaults.add_asset_dialog.variant;
 
-  // Set defaults from config when dialog opens
-  useEffect(() => {
-    if (open) {
+  // Seed form from config when dialog opens
+  function handleOpenChange(nextOpen: boolean) {
+    setOpen(nextOpen);
+    if (nextOpen) {
       const defaults = assetConfig.defaults.add_asset_dialog;
       setAssetType(defaults.asset_type);
       setPlatform(defaults.platform);
       setName("");
       setError(null);
     }
-  }, [open, assetConfig.defaults.add_asset_dialog]);
+  }
 
   // Preview the asset_id
   const previewAssetId = assetType
-    ? buildAssetId(projectHumanId, assetType, showPlatform ? platform : null, "main")
+    ? buildAssetId(projectHumanId, assetType, showPlatform ? platform : null, defaultVariant)
     : "";
 
-  async function handleSubmit() {
+  function handleSubmit() {
     if (!name.trim() || !assetType) return;
     setError(null);
 
     const effectivePlatform = showPlatform ? platform || null : null;
 
-    // Find a unique variant by checking existing assets
-    let variant = "main";
-    const existingIds = new Set(existingAssets.map((a) => a.asset_id));
-    let candidateId = buildAssetId(projectHumanId, assetType, effectivePlatform, variant);
+    // DB-first: attempt insert, on 23505 increment variant and retry
+    attemptInsert(effectivePlatform, defaultVariant, 1);
+  }
 
-    if (existingIds.has(candidateId)) {
-      // Increment numeric variant until we find a gap
-      let n = 2;
-      do {
-        variant = String(n).padStart(2, "0");
-        candidateId = buildAssetId(projectHumanId, assetType, effectivePlatform, variant);
-        n++;
-      } while (existingIds.has(candidateId) && n < 100);
-    }
+  function attemptInsert(effectivePlatform: string | null, variant: string, attempt: number) {
+    const candidateId = buildAssetId(projectHumanId, assetType, effectivePlatform, variant);
 
     const insert: ProjectAssetInsert = {
       project_id: projectId,
@@ -447,17 +439,10 @@ function AddAssetDialog({
       },
       onError: (err) => {
         const msg = (err as Error).message;
-        // Handle DB unique constraint violation with retry
-        if (msg.includes("23505") || msg.includes("duplicate")) {
-          const retryId = `${candidateId}_${Date.now().toString(36)}`;
-          createAsset.mutate(
-            { ...insert, asset_id: retryId },
-            {
-              onSuccess: () => setOpen(false),
-              onError: (retryErr) =>
-                setError(`Failed to add asset: ${(retryErr as Error).message}`),
-            }
-          );
+        if ((msg.includes("23505") || msg.includes("duplicate")) && attempt < 20) {
+          // Increment variant: main → 02, 02 → 03, etc.
+          const nextVariant = String(attempt + 1).padStart(2, "0");
+          attemptInsert(effectivePlatform, nextVariant, attempt + 1);
         } else {
           setError(`Failed to add asset: ${msg}`);
         }
@@ -466,7 +451,7 @@ function AddAssetDialog({
   }
 
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
+    <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogTrigger asChild>
         <Button variant="outline" size="sm">
           <Plus className="h-4 w-4 mr-1" />
@@ -718,7 +703,6 @@ export default function DeliverableDetailPage() {
           <AddAssetDialog
             projectId={project.id}
             projectHumanId={project.project_id}
-            existingAssets={assets}
           />
         </div>
 
