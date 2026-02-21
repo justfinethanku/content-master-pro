@@ -29,6 +29,7 @@ import {
 import { createClient } from "@/lib/supabase/client";
 import { GuidelinesManager } from "@/components/guidelines-manager";
 import { NamespaceManager } from "@/components/namespace-manager";
+import { FALLBACK_ASSET_PLATFORMS } from "@/lib/asset-config";
 
 interface AppSetting {
   id: string;
@@ -69,7 +70,7 @@ const DEFAULTS: Record<string, any> = {
   headline_generator_count: 5,
   image_generator_model: "google/gemini-3-pro-image",
   image_generator_fallback_model: "openai/dall-e-3",
-  default_output_formats: ["substack", "youtube", "tiktok"],
+  default_output_formats: FALLBACK_ASSET_PLATFORMS.filter(p => p.is_active).slice(0, 3).map(p => p.key),
   max_sessions_per_user: 100,
   ai_call_log_retention_days: 30,
 };

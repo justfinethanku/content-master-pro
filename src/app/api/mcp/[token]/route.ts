@@ -32,7 +32,7 @@ export async function POST(
     .then();
 
   // Create fresh server + transport per request (stateless)
-  const server = createMcpServer(supabase, keyRow.user_id);
+  const server = await createMcpServer(supabase, keyRow.user_id);
   const transport = new WebStandardStreamableHTTPServerTransport();
   await server.connect(transport);
 
