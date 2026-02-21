@@ -85,11 +85,9 @@ function AssetCard({
   const meta = asset.metadata as Record<string, unknown>;
   const wordCount = meta?.word_count as number | undefined;
 
-  const isClickable = asset.content !== null;
   const cardClass = cn(
     "rounded-lg border border-border bg-card p-3 sm:p-4 space-y-2 block overflow-hidden",
-    isClickable &&
-      "hover:border-primary/40 hover:bg-muted/50 transition-colors cursor-pointer"
+    "hover:border-primary/40 hover:bg-muted/50 transition-colors cursor-pointer"
   );
 
   const cardContent = (
@@ -151,15 +149,11 @@ function AssetCard({
     </>
   );
 
-  if (isClickable) {
-    return (
-      <Link href={`/deliverables/${projectId}/assets/${asset.id}`} className={cardClass}>
-        {cardContent}
-      </Link>
-    );
-  }
-
-  return <div className={cardClass}>{cardContent}</div>;
+  return (
+    <Link href={`/deliverables/${projectId}/assets/${asset.id}`} className={cardClass}>
+      {cardContent}
+    </Link>
+  );
 }
 
 function InlineTitle({
@@ -429,6 +423,7 @@ function AddAssetDialog({
       asset_type: assetType,
       platform: effectivePlatform,
       variant,
+      content: "",
       status: "draft",
       metadata: {},
     };
