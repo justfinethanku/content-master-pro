@@ -4,9 +4,14 @@ import { useState, useRef, useEffect, useCallback } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { useDeliverable, useUpdateProjectName, useUpdateProjectUrl, useUpdateProjectStatus, useDeleteProject } from "@/hooks/use-deliverables";
-import type { ProjectAsset, ProjectStatus } from "@/lib/types";
+import { useCreateAsset } from "@/hooks/use-assets";
+import { useAssetConfig } from "@/hooks/use-asset-config";
+import { buildAssetId, getActiveTypes, getActivePlatforms } from "@/lib/asset-config";
+import type { ProjectAsset, ProjectStatus, ProjectAssetInsert } from "@/lib/types";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -18,6 +23,15 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
 import {
   Select,
   SelectContent,
@@ -32,8 +46,10 @@ import {
   Calendar,
   ExternalLink,
   FileText,
+  Loader2,
   Package,
   Pencil,
+  Plus,
   Trash2,
 } from "lucide-react";
 
@@ -353,6 +369,178 @@ function InlineUrl({
   );
 }
 
+function AddAssetDialog({
+  projectId,
+  projectHumanId,
+}: {
+  projectId: string;
+  projectHumanId: string;
+}) {
+  const [open, setOpen] = useState(false);
+  const [name, setName] = useState("");
+  const [assetType, setAssetType] = useState("");
+  const [platform, setPlatform] = useState("");
+  const [error, setError] = useState<string | null>(null);
+
+  const { config: assetConfig } = useAssetConfig();
+  const createAsset = useCreateAsset();
+
+  const activeTypes = getActiveTypes(assetConfig);
+  const activePlatforms = getActivePlatforms(assetConfig);
+
+  const selectedType = assetConfig.types.find((t) => t.key === assetType);
+  const showPlatform = selectedType?.supports_platform ?? false;
+  const defaultVariant = selectedType?.default_variant ?? assetConfig.defaults.add_asset_dialog.variant;
+
+  // Seed form from config when dialog opens
+  function handleOpenChange(nextOpen: boolean) {
+    setOpen(nextOpen);
+    if (nextOpen) {
+      const defaults = assetConfig.defaults.add_asset_dialog;
+      setAssetType(defaults.asset_type);
+      setPlatform(defaults.platform);
+      setName("");
+      setError(null);
+    }
+  }
+
+  // Preview the asset_id
+  const previewAssetId = assetType
+    ? buildAssetId(projectHumanId, assetType, showPlatform ? platform : null, defaultVariant)
+    : "";
+
+  function handleSubmit() {
+    if (!name.trim() || !assetType) return;
+    setError(null);
+
+    const effectivePlatform = showPlatform ? platform || null : null;
+
+    // DB-first: attempt insert, on 23505 increment variant and retry
+    attemptInsert(effectivePlatform, defaultVariant, 1);
+  }
+
+  function attemptInsert(effectivePlatform: string | null, variant: string, attempt: number) {
+    const candidateId = buildAssetId(projectHumanId, assetType, effectivePlatform, variant);
+
+    const insert: ProjectAssetInsert = {
+      project_id: projectId,
+      asset_id: candidateId,
+      name: name.trim(),
+      asset_type: assetType,
+      platform: effectivePlatform,
+      variant,
+      status: "draft",
+      metadata: {},
+    };
+
+    createAsset.mutate(insert, {
+      onSuccess: () => {
+        setOpen(false);
+      },
+      onError: (err) => {
+        const msg = (err as Error).message;
+        if ((msg.includes("23505") || msg.includes("duplicate")) && attempt < 20) {
+          // Increment variant: main → 02, 02 → 03, etc.
+          const nextVariant = String(attempt + 1).padStart(2, "0");
+          attemptInsert(effectivePlatform, nextVariant, attempt + 1);
+        } else {
+          setError(`Failed to add asset: ${msg}`);
+        }
+      },
+    });
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={handleOpenChange}>
+      <DialogTrigger asChild>
+        <Button variant="outline" size="sm">
+          <Plus className="h-4 w-4 mr-1" />
+          Add asset
+        </Button>
+      </DialogTrigger>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle>Add asset</DialogTitle>
+          <DialogDescription>
+            Add a new asset to this project.
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="space-y-4 py-2">
+          <div className="space-y-2">
+            <Label htmlFor="asset-name">Name</Label>
+            <Input
+              id="asset-name"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder="e.g. YouTube transcript"
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && name.trim() && assetType) handleSubmit();
+              }}
+            />
+          </div>
+
+          <div className="space-y-2">
+            <Label>Type</Label>
+            <Select value={assetType} onValueChange={setAssetType}>
+              <SelectTrigger>
+                <SelectValue placeholder="Select type" />
+              </SelectTrigger>
+              <SelectContent>
+                {activeTypes.map((t) => (
+                  <SelectItem key={t.key} value={t.key}>
+                    {t.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          {showPlatform && (
+            <div className="space-y-2">
+              <Label>Platform</Label>
+              <Select value={platform} onValueChange={setPlatform}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Select platform" />
+                </SelectTrigger>
+                <SelectContent>
+                  {activePlatforms.map((p) => (
+                    <SelectItem key={p.key} value={p.key}>
+                      {p.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
+
+          {previewAssetId && (
+            <p className="text-xs text-muted-foreground font-mono">
+              ID: {previewAssetId}
+            </p>
+          )}
+
+          {error && (
+            <p className="text-sm text-destructive">{error}</p>
+          )}
+        </div>
+
+        <DialogFooter>
+          <Button
+            onClick={handleSubmit}
+            disabled={!name.trim() || !assetType || createAsset.isPending}
+          >
+            {createAsset.isPending && (
+              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+            )}
+            Add asset
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 export default function DeliverableDetailPage() {
   const params = useParams();
   const router = useRouter();
@@ -508,9 +696,15 @@ export default function DeliverableDetailPage() {
 
       {/* Assets */}
       <div className="space-y-3">
-        <h2 className="text-lg font-semibold text-foreground">
-          Assets ({assets.length})
-        </h2>
+        <div className="flex items-center justify-between">
+          <h2 className="text-lg font-semibold text-foreground">
+            Assets ({assets.length})
+          </h2>
+          <AddAssetDialog
+            projectId={project.id}
+            projectHumanId={project.project_id}
+          />
+        </div>
 
         {assets.length === 0 ? (
           <div className="rounded-lg border border-dashed border-border p-8 text-center text-sm text-muted-foreground">
