@@ -9,6 +9,7 @@ import type {
   ProjectAssetInsert,
   ProjectStatus,
 } from "@/lib/types";
+import { buildAssetId } from "@/lib/asset-config";
 
 // Query key factory
 export const deliverableKeys = {
@@ -218,7 +219,8 @@ export function generateProjectId(date: Date = new Date()): string {
 }
 
 /**
- * Create a new project with an initial post asset
+ * Create a new project with an initial asset.
+ * Caller provides asset defaults (type, platform, variant) — no config fetch inside mutation.
  */
 export function useCreateProject() {
   const queryClient = useQueryClient();
@@ -228,10 +230,16 @@ export function useCreateProject() {
       name,
       content,
       metadata,
+      initialAssetType = "post",
+      initialPlatform = "substack",
+      initialVariant = "main",
     }: {
       name: string;
       content: string;
       metadata?: Record<string, unknown>;
+      initialAssetType?: string;
+      initialPlatform?: string;
+      initialVariant?: string;
     }): Promise<Project> => {
       const supabase = createClient();
 
@@ -259,13 +267,14 @@ export function useCreateProject() {
 
       if (projectError) throw projectError;
 
-      // Insert initial post asset
-      const assetId = `${projectId}_post_substack_main`;
+      // Insert initial asset
+      const assetId = buildAssetId(projectId, initialAssetType, initialPlatform, initialVariant);
       const assetInsert: ProjectAssetInsert = {
         project_id: project.id,
         asset_id: assetId,
         name,
-        asset_type: "post",
+        asset_type: initialAssetType,
+        platform: initialPlatform || null,
         content,
         status: "draft",
         metadata: metadata ?? {},

@@ -6,6 +6,8 @@ import { useDeliverables, type DeliverableFilters } from "@/hooks/use-deliverabl
 import type { ProjectStatus } from "@/lib/types";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
+import { useAssetConfig } from "@/hooks/use-asset-config";
+import { resolveAssetLabel } from "@/lib/asset-config";
 import {
   Select,
   SelectContent,
@@ -37,6 +39,7 @@ const STATUS_COLORS: Record<ProjectStatus, string> = {
 export default function DeliverablesPage() {
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("draft");
+  const { config: assetConfig } = useAssetConfig();
 
   // Read URL query param on mount (avoids useSearchParams Suspense requirement)
   useEffect(() => {
@@ -206,7 +209,7 @@ export default function DeliverablesPage() {
                             variant="outline"
                             className="text-[10px] px-1.5 py-0"
                           >
-                            {type}
+                            {resolveAssetLabel(assetConfig, type)}
                           </Badge>
                         ))}
                       </div>
