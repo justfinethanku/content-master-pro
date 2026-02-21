@@ -14,7 +14,11 @@ SELECT
   '{"temperature": 0.7, "max_tokens": 1500}'::jsonb
 FROM prompt_sets ps
 WHERE ps.slug = 'post_preamble_generator'
-ON CONFLICT (prompt_set_id, version) DO NOTHING;
+ON CONFLICT (prompt_set_id, version) DO UPDATE SET
+  prompt_content = EXCLUDED.prompt_content,
+  model_id = EXCLUDED.model_id,
+  status = EXCLUDED.status,
+  api_config = EXCLUDED.api_config;
 
 -- 2. Ensure v2 is active (in case a prior run archived it)
 UPDATE prompt_versions
