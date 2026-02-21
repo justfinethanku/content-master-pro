@@ -329,9 +329,26 @@ function AssetEditorInner({
       ? currentContent.split("\n\n---\n\n").slice(1).join("\n\n---\n\n")
       : currentContent;
 
+    // Build companion resources context so the AI knows what each resource covers
+    const resourceParts: string[] = [];
+    if (promptKits[0]?.content) {
+      resourceParts.push(`### Prompt Kit\n\n${promptKits[0].content}`);
+    }
+    if (guides[0]?.content) {
+      resourceParts.push(`### Guide\n\n${guides[0].content}`);
+    }
+
+    const preambleVars: Record<string, string> = {
+      content: bodyContent,
+      resources_cta: resourcesCta,
+      companion_resources: resourceParts.length > 0
+        ? resourceParts.join("\n\n---\n\n")
+        : "No companion resources provided.",
+    };
+
     const result = await generatePreamble({
       prompt_slug: "post_preamble_generator",
-      variables: { content: bodyContent, resources_cta: resourcesCta },
+      variables: preambleVars,
       stream: true,
     });
 
