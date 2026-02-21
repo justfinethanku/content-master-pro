@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What This Is
 
-Personal content creation platform that transforms brain dumps into multi-platform deliverables. Built for the "Limited Edition Jonathan" Substack workflow.
+Personal content creation platform that transforms brain dumps into multi-platform deliverables. Built for Nate Jones Media LLC.
 
 ## Commands
 
@@ -406,3 +406,12 @@ Lives in `prompt-kit-presenter` (`/Users/jonathanedwards/AUTOMATION/SubStack/pro
 | `search_prompt_kits` | Keyword search across prompt kits |
 | `get_prompt_kit` | Full prompt kit content by UUID |
 | `list_prompt_kits` | All available prompt kits |
+
+### Prompt Kit Pipeline (cross-repo)
+
+See [`docs/prompt-kit-pipeline.md`](./docs/prompt-kit-pipeline.md) for the full prompt kit data flow between CMP and prompt-kit-presenter. Key points:
+- **Shared database** — Presenter reads directly from CMP's Supabase via Drizzle ORM + transaction pooler. No sync needed.
+- **CMP creates** prompt kits (post → AI conversion → `project_assets` with `asset_type = 'promptkit'`)
+- **Presenter displays** them at `promptkit.natebjones.com/{assetId}`
+- **MCP registration** is the only API call between the two apps (presenter → CMP `/api/subscriber/register`)
+- **Presenter repo**: `/Users/jonathanedwards/AUTOMATION/SubStack/prompt-kit-presenter`
