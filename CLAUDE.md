@@ -407,11 +407,15 @@ Lives in `prompt-kit-presenter` (`/Users/jonathanedwards/AUTOMATION/SubStack/pro
 | `get_prompt_kit` | Full prompt kit content by UUID |
 | `list_prompt_kits` | All available prompt kits |
 
-### Prompt Kit Pipeline (cross-repo)
+### Companion Asset Pipeline (cross-repo)
 
-See [`docs/prompt-kit-pipeline.md`](./docs/prompt-kit-pipeline.md) for the full prompt kit data flow between CMP and prompt-kit-presenter. Key points:
+See [`docs/prompt-kit-pipeline.md`](./docs/prompt-kit-pipeline.md) for the full companion asset data flow between CMP and prompt-kit-presenter. Key points:
+- **Two companion types**: prompt kits (`promptkit`) and guides (`guide`) — sibling assets alongside posts in the same project
 - **Shared database** — Presenter reads directly from CMP's Supabase via Drizzle ORM + transaction pooler. No sync needed.
-- **CMP creates** prompt kits (post → AI conversion → `project_assets` with `asset_type = 'promptkit'`)
-- **Presenter displays** them at `promptkit.natebjones.com/{assetId}`
+- **CMP creates** companion assets → `project_assets` table
+- **Presenter displays** them at `promptkit.natebjones.com/{assetId}` — blue accent for prompt kits, green for guides
+- **Preamble generator** (`post_preamble_generator` v2) receives companion content via `{{companion_resources}}` and builds CTA links via `{{resources_cta}}`
+- **Asset cards** in CMP are color-coded: green tint for guides, blue for prompt kits, neutral for posts
+- **Hooks**: `useProjectPromptKits(id)`, `useProjectGuides(id)` — both wrap `useProjectAssetsByType(id, type)`
 - **MCP registration** is the only API call between the two apps (presenter → CMP `/api/subscriber/register`)
 - **Presenter repo**: `/Users/jonathanedwards/AUTOMATION/SubStack/prompt-kit-presenter`
