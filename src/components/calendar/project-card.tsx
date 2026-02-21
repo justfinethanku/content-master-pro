@@ -6,6 +6,8 @@ import type { ProjectStatus } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { useAssetConfig } from "@/hooks/use-asset-config";
+import { resolveAssetLabel } from "@/lib/asset-config";
 
 // Status configuration
 const STATUS_CONFIG: Record<
@@ -49,18 +51,10 @@ const STATUS_CONFIG: Record<
   },
 };
 
-// Short labels for asset type pills on calendar cards
-const ASSET_SHORT_LABELS: Record<string, string> = {
-  post: "Post",
-  transcript_youtube: "YT Script",
-  transcript_tiktok: "TT Script",
-  description_youtube: "YT Desc",
-  description_tiktok: "TT Desc",
+// Legacy compound labels for asset types not yet in app_settings
+// (e.g., "image_substack", "prompts" — these predate the config system)
+const LEGACY_LABELS: Record<string, string> = {
   prompts: "Prompts",
-  promptkit: "Prompt Kit",
-  guide: "Guide",
-  post_linkedin: "LinkedIn",
-  post_substack: "Substack",
   image_substack: "Image",
 };
 
@@ -111,6 +105,12 @@ interface ProjectCardProps {
 }
 
 export function ProjectCard({ project, variant = "compact", isToday = false }: ProjectCardProps) {
+  const { config: assetConfig } = useAssetConfig();
+
+  // Resolve label for an asset type key (handles legacy compound keys too)
+  const getLabel = (type: string) =>
+    LEGACY_LABELS[type] ?? resolveAssetLabel(assetConfig, type);
+
   // Treat past-date "scheduled" posts as "published"
   const today = new Date().toISOString().split("T")[0];
   const effectiveStatus: ProjectStatus =
@@ -151,7 +151,7 @@ export function ProjectCard({ project, variant = "compact", isToday = false }: P
                     key={type}
                     className="text-[8px] font-medium px-1 py-px rounded bg-stone-200/80 text-stone-500 dark:bg-stone-800 dark:text-stone-500 leading-none"
                   >
-                    {ASSET_SHORT_LABELS[type] ?? type}
+                    {getLabel(type)}
                   </span>
                 ))}
               </div>
@@ -216,7 +216,7 @@ export function ProjectCard({ project, variant = "compact", isToday = false }: P
                 key={type}
                 className="text-[9px] font-medium px-1.5 py-0.5 rounded-full bg-stone-200/80 text-stone-600 dark:bg-stone-800 dark:text-stone-400"
               >
-                {ASSET_SHORT_LABELS[type] ?? type}
+                {getLabel(type)}
               </span>
             ))}
           </div>

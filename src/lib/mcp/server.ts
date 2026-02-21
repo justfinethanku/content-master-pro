@@ -1,6 +1,8 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { createClient, SupabaseClient } from "@supabase/supabase-js";
 import { z } from "zod";
+import { loadAssetConfig } from "@/lib/asset-config.server";
+import { buildAssetId } from "@/lib/asset-config";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export type AnySupabase = SupabaseClient<any, any, any>;
@@ -18,17 +20,22 @@ export function getSupabase(): AnySupabase {
 /**
  * Create an MCP server with all registered tools.
  */
-export function createMcpServer(
+export async function createMcpServer(
   supabase: AnySupabase,
   userId: string
-): McpServer {
+): Promise<McpServer> {
+  // Load asset config for dynamic instructions and schema descriptions
+  const assetConfig = await loadAssetConfig(supabase);
+  const typeKeys = assetConfig.types.filter(t => t.is_active).map(t => t.key).join(", ");
+  const platformKeys = assetConfig.platforms.filter(p => p.is_active).map(p => p.key).join(", ");
+
   const server = new McpServer(
     {
       name: "content-master-pro",
       version: "1.0.0",
     },
     {
-      instructions: `You are connected to Content Master Pro — Jon's content creation platform for the "Limited Edition Jonathan" Substack and related newsletters.
+      instructions: `You are connected to Content Master Pro — Jon's content creation platform for Nate Jones Media LLC.
 
 ## What you can do
 
@@ -66,8 +73,8 @@ Search uses ILIKE keyword matching, so use short terms: "prompt" not "prompting 
 The full flow for creating content:
 1. **create_project** — Give it a descriptive name. Returns a project with a UUID (the "id" field) and a human-readable project_id like "20260214_701".
 2. **add_asset** — Add one or more assets to the project. Use the project's UUID "id" (not "project_id") as the project_id parameter.
-   - Asset types: post, transcript, description, thumbnail, promptkit, guide
-   - Set platform when relevant: substack, youtube, tiktok, linkedin, twitter
+   - Asset types: ${typeKeys}
+   - Set platform when relevant: ${platformKeys}
    - Set variant for multiple versions of the same type: "01", "02", "16x9", "9x16"
    - Each asset starts at version 1 in "draft" status.
 
@@ -459,9 +466,9 @@ When you spot a trend, content gap, or interesting angle during analysis:
       inputSchema: {
         project_id: z.string().uuid().describe("Project UUID"),
         name: z.string().describe("Asset name/title"),
-        asset_type: z.string().describe("Type: post, transcript, description, thumbnail, promptkit, guide"),
+        asset_type: z.string().describe(`Type: ${typeKeys}`),
         content: z.string().optional().describe("Asset content (text)"),
-        platform: z.string().optional().describe("Target platform"),
+        platform: z.string().optional().describe(`Target platform: ${platformKeys}`),
         variant: z.string().optional().describe("Variant identifier"),
       },
     },
@@ -475,10 +482,7 @@ When you spot a trend, content gap, or interesting angle during analysis:
       if (pErr || !project)
         return { content: [{ type: "text" as const, text: `Project ${project_id} not found.` }], isError: true };
 
-      const parts = [project.project_id, asset_type];
-      if (platform) parts.push(platform);
-      if (variant) parts.push(variant);
-      const assetId = parts.join("_");
+      const assetId = buildAssetId(project.project_id, asset_type, platform, variant);
 
       const { data, error } = await supabase
         .from("project_assets")

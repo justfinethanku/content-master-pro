@@ -99,6 +99,13 @@ export function useCreateAsset() {
       queryClient.invalidateQueries({
         queryKey: assetKeys.list(data.project_id),
       });
+      // Also invalidate deliverables views so new assets appear immediately
+      queryClient.invalidateQueries({
+        queryKey: deliverableKeys.detail(data.project_id),
+      });
+      queryClient.invalidateQueries({
+        queryKey: deliverableKeys.lists(),
+      });
     },
   });
 }
