@@ -419,3 +419,46 @@ See [`docs/prompt-kit-pipeline.md`](./docs/prompt-kit-pipeline.md) for the full 
 - **Hooks**: `useProjectPromptKits(id)`, `useProjectGuides(id)` — both wrap `useProjectAssetsByType(id, type)`
 - **MCP registration** is the only API call between the two apps (presenter → CMP `/api/subscriber/register`)
 - **Presenter repo**: `/Users/jonathanedwards/AUTOMATION/SubStack/prompt-kit-presenter`
+
+## Cursor Cloud specific instructions
+
+### Critical: Supabase env var override
+
+The Cloud Agent VM injects production Supabase secrets (`NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`) as shell environment variables. These **override** `.env.local` because `process.env` reads from the OS environment first. To use **local Supabase** during development, start the dev server with these vars unset:
+
+```bash
+env -u NEXT_PUBLIC_SUPABASE_URL -u NEXT_PUBLIC_SUPABASE_ANON_KEY -u SUPABASE_SERVICE_ROLE_KEY npm run dev
+```
+
+### Next.js 16: `next lint` removed
+
+`next lint` is no longer a subcommand in Next.js 16. Run ESLint directly:
+
+```bash
+npx eslint src/
+```
+
+The `npm run lint` script in `package.json` still references `next lint` and will fail. Use the direct ESLint command instead.
+
+### Auth layout access code gate
+
+The `(auth)` layout (`src/app/(auth)/layout.tsx`) has a session-storage-gated access code screen before the login form. The code is hardcoded in that file. This must be entered before the actual email/password login form is shown.
+
+### Services overview
+
+| Service | How to start | Port |
+|---------|-------------|------|
+| Next.js dev | `npm run dev` | 3000 |
+| Supabase (Docker) | `supabase start` | API 54321, DB 54322, Studio 54323, Inbucket 54324 |
+
+### Local dev startup sequence
+
+1. Ensure Docker is running (`docker info`)
+2. `supabase start` (pulls images on first run, ~90s)
+3. `npm run supabase:env` (generates `.env.local` with local credentials)
+4. `npm run supabase:seed-user` (creates `test@example.com` / `password123`)
+5. Start dev server with env override (see above)
+
+### Commands reference
+
+Standard commands are documented in `CLAUDE.md`. Key ones: `npm run dev`, `npx vitest run`, `npx eslint src/`, `npm run format:check`.
