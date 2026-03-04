@@ -141,7 +141,7 @@ export function ProjectCard({ project, variant = "compact", isToday = false }: P
             aria-label={statusConfig.label}
           />
           <div className="min-w-0">
-            <p className="text-xs font-medium text-stone-800 dark:text-stone-200 leading-tight line-clamp-2">
+            <p className="text-xs font-medium text-stone-800 dark:text-stone-200 leading-tight">
               {project.name}
             </p>
             {project.asset_types.length > 0 && (

@@ -119,7 +119,6 @@ function DroppableDayCell({ date, projects, inCurrentMonth, maxCards = 3 }: Drop
       ref={setNodeRef}
       className={cn(
         "min-h-25 p-1.5 border-r border-b border-stone-200 dark:border-stone-800 last:border-r-0",
-        "overflow-hidden",
         !inCurrentMonth && "bg-stone-50/50 dark:bg-stone-900/30",
         today && "bg-yellow-50/50 dark:bg-yellow-950/20 ring-2 ring-inset ring-yellow-400 dark:ring-yellow-500",
         isOver && "ring-2 ring-yellow-400 ring-inset bg-yellow-50/80 dark:bg-yellow-950/40"
@@ -138,7 +137,7 @@ function DroppableDayCell({ date, projects, inCurrentMonth, maxCards = 3 }: Drop
         {date.getDate()}
       </div>
 
-      <div className="space-y-1 overflow-hidden">
+      <div className="space-y-1">
         {projects.slice(0, maxCards).map((project) => (
           <DraggableProjectCard key={project.id} project={project} variant="compact" />
         ))}
