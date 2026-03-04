@@ -25,7 +25,42 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
-import { ArrowLeft, ChevronDown, ExternalLink, FileCode, Loader2, PanelRightClose, PanelRightOpen, Pencil, Plus, RefreshCw, Sparkles, Trash2 } from "lucide-react";
+import { ArrowLeft, Check, ChevronDown, Copy, ExternalLink, FileCode, Loader2, PanelRightClose, PanelRightOpen, Pencil, Plus, RefreshCw, Sparkles, Trash2 } from "lucide-react";
+
+function PresenterUrl({ assetId }: { assetId: string }) {
+  const [copied, setCopied] = useState(false);
+  const url = `https://promptkit.natebjones.com/${assetId}`;
+
+  const handleCopy = async () => {
+    await navigator.clipboard.writeText(url);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
+  return (
+    <div className="flex items-center gap-1.5 mt-0.5">
+      <a
+        href={url}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="text-xs text-muted-foreground hover:text-primary transition-colors truncate"
+      >
+        {url}
+      </a>
+      <button
+        onClick={handleCopy}
+        className="text-muted-foreground hover:text-primary transition-colors shrink-0"
+        title="Copy link"
+      >
+        {copied ? (
+          <Check className="h-3 w-3 text-green-500" />
+        ) : (
+          <Copy className="h-3 w-3" />
+        )}
+      </button>
+    </div>
+  );
+}
 
 function formatRelativeTime(dateStr: string): string {
   const date = new Date(dateStr);
@@ -665,6 +700,9 @@ function AssetEditorInner({
                 </>
               )}
             </div>
+            {(asset.asset_type === "promptkit" || asset.asset_type === "guide") && (
+              <PresenterUrl assetId={asset.asset_id} />
+            )}
           </div>
         </div>
 
