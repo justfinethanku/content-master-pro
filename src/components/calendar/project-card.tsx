@@ -141,11 +141,11 @@ export function ProjectCard({ project, variant = "compact", isToday = false }: P
             aria-label={statusConfig.label}
           />
           <div className="min-w-0">
-            <p className="text-xs font-medium text-stone-800 dark:text-stone-200 leading-tight line-clamp-1">
+            <p className="text-xs font-medium text-stone-800 dark:text-stone-200 leading-tight line-clamp-2">
               {project.name}
             </p>
             {project.asset_types.length > 0 && (
-              <div className="hidden xl:flex items-center gap-0.5 mt-0.5">
+              <div className="flex items-center gap-0.5 mt-0.5">
                 {project.asset_types.map((type) => (
                   <span
                     key={type}
