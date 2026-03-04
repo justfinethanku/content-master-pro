@@ -103,9 +103,10 @@ interface DroppableDayCellProps {
   date: Date;
   projects: CalendarProject[];
   inCurrentMonth: boolean;
+  maxCards?: number;
 }
 
-function DroppableDayCell({ date, projects, inCurrentMonth }: DroppableDayCellProps) {
+function DroppableDayCell({ date, projects, inCurrentMonth, maxCards = 3 }: DroppableDayCellProps) {
   const dateKey = formatDateKey(date);
   const today = isToday(date);
   const { setNodeRef, isOver } = useDroppable({
@@ -138,12 +139,12 @@ function DroppableDayCell({ date, projects, inCurrentMonth }: DroppableDayCellPr
       </div>
 
       <div className="space-y-1 overflow-hidden">
-        {projects.slice(0, 3).map((project) => (
+        {projects.slice(0, maxCards).map((project) => (
           <DraggableProjectCard key={project.id} project={project} variant="compact" />
         ))}
-        {projects.length > 3 && (
+        {projects.length > maxCards && (
           <p className="text-[10px] text-stone-500 dark:text-stone-500 px-1 font-medium">
-            +{projects.length - 3} more
+            +{projects.length - maxCards} more
           </p>
         )}
       </div>
@@ -328,7 +329,8 @@ interface CalendarGridProps {
 export function CalendarGrid({ projects, viewMode, currentDate, scrollToToday }: CalendarGridProps) {
   const monthDays = useMemo(() => getMonthDays(currentDate), [currentDate]);
   const extendedDays = useMemo(() => getExtendedDays(currentDate), [currentDate]);
-  const isMobile = useMediaQuery("(max-width: 639px)");
+  const isMobile = useMediaQuery("(max-width: 1023px)");
+  const isXl = useMediaQuery("(min-width: 1280px)");
 
   const projectsByDate = useMemo(() => groupByDate(projects), [projects]);
 
@@ -379,6 +381,8 @@ export function CalendarGrid({ projects, viewMode, currentDate, scrollToToday }:
   }
 
   // Desktop month view: traditional 7-column grid
+  const maxCardsPerDay = isXl ? 3 : 2;
+
   return (
     <div className="border border-stone-200 dark:border-stone-800 rounded-xl overflow-hidden shadow-sm">
       <div className="grid grid-cols-7 border-b border-stone-200 dark:border-stone-800 bg-stone-50 dark:bg-stone-900">
@@ -399,6 +403,7 @@ export function CalendarGrid({ projects, viewMode, currentDate, scrollToToday }:
             date={day}
             projects={projectsByDate[formatDateKey(day)] || []}
             inCurrentMonth={isCurrentMonth(day, currentDate)}
+            maxCards={maxCardsPerDay}
           />
         ))}
       </div>
