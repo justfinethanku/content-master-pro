@@ -25,6 +25,16 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
+import { useUpdateAsset } from "@/hooks/use-assets";
+import { useAssetConfig } from "@/hooks/use-asset-config";
+import { getActiveTypes, getActivePlatforms } from "@/lib/asset-config";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { ArrowLeft, Check, ChevronDown, Copy, ExternalLink, FileCode, Loader2, PanelRightClose, PanelRightOpen, Pencil, Plus, RefreshCw, Sparkles, Trash2 } from "lucide-react";
 
 function PresenterUrl({ assetId }: { assetId: string }) {
@@ -220,6 +230,9 @@ function AssetEditorInner({
 
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const updateAssetName = useUpdateAssetName();
+  const updateAsset = useUpdateAsset();
+  const { config: assetConfig } = useAssetConfig();
+  const selectedTypeConfig = assetConfig.types.find((t) => t.key === asset.asset_type);
 
   const currentContent = asset.content || "";
   const meta = asset.metadata as Record<string, unknown>;
@@ -676,10 +689,46 @@ function AssetEditorInner({
               </button>
             )}
             <div className="flex items-center gap-2 mt-0.5">
-              <span className="text-xs text-muted-foreground">
-                {asset.asset_type}
-              </span>
-              {asset.platform && (
+              <Select
+                value={asset.asset_type}
+                onValueChange={(value) =>
+                  updateAsset.mutate({ id: asset.id, updates: { asset_type: value } })
+                }
+              >
+                <SelectTrigger className="h-6 w-auto gap-1 rounded-md border-0 bg-muted px-2 text-xs cursor-pointer">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {getActiveTypes(assetConfig).map((t) => (
+                    <SelectItem key={t.key} value={t.key}>
+                      {t.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              {selectedTypeConfig?.supports_platform && (
+                <>
+                  <span className="text-xs text-muted-foreground">·</span>
+                  <Select
+                    value={asset.platform ?? ""}
+                    onValueChange={(value) =>
+                      updateAsset.mutate({ id: asset.id, updates: { platform: value || null } })
+                    }
+                  >
+                    <SelectTrigger className="h-6 w-auto gap-1 rounded-md border-0 bg-muted px-2 text-xs cursor-pointer">
+                      <SelectValue placeholder="Platform" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {getActivePlatforms(assetConfig).map((p) => (
+                        <SelectItem key={p.key} value={p.key}>
+                          {p.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </>
+              )}
+              {!selectedTypeConfig?.supports_platform && asset.platform && (
                 <>
                   <span className="text-xs text-muted-foreground">·</span>
                   <span className="text-xs text-muted-foreground">

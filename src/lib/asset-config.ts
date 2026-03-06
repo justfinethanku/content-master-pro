@@ -52,6 +52,7 @@ export const FALLBACK_ASSET_TYPES: AssetTypeConfig[] = [
   { key: "thumbnail", label: "Thumbnail", short_label: "Thumbnail", is_active: true, supports_platform: false, default_variant: "16x9" },
   { key: "promptkit", label: "Prompt Kit", short_label: "Prompt Kit", is_active: true, supports_platform: false, default_variant: "1" },
   { key: "guide", label: "Guide", short_label: "Guide", is_active: true, supports_platform: false, default_variant: "main" },
+  { key: "field_notes", label: "Field Notes", short_label: "Notes", is_active: true, supports_platform: false, default_variant: "main" },
 ];
 
 export const FALLBACK_ASSET_PLATFORMS: AssetPlatformConfig[] = [
@@ -60,6 +61,7 @@ export const FALLBACK_ASSET_PLATFORMS: AssetPlatformConfig[] = [
   { key: "tiktok", label: "TikTok", short_label: "TikTok", is_active: true },
   { key: "linkedin", label: "LinkedIn", short_label: "LinkedIn", is_active: true },
   { key: "twitter", label: "Twitter/X", short_label: "Twitter", is_active: true },
+  { key: "pre-production", label: "Pre-production", short_label: "Pre-prod", is_active: true },
 ];
 
 export const FALLBACK_ASSET_DEFAULTS: AssetDefaults = {

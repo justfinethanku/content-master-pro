@@ -141,6 +141,10 @@ export function useUpdateAsset() {
         queryKey: assetKeys.list(data.project_id),
       });
       queryClient.invalidateQueries({ queryKey: assetKeys.detail(data.id) });
+      // Also invalidate deliverables so project detail page reflects changes
+      queryClient.invalidateQueries({
+        queryKey: deliverableKeys.detail(data.project_id),
+      });
     },
   });
 }
