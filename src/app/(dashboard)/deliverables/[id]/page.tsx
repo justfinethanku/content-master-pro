@@ -4,9 +4,10 @@ import { useState, useRef, useEffect, useCallback } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { useDeliverable, useUpdateProjectName, useUpdateProjectUrl, useUpdateProjectStatus, useDeleteProject } from "@/hooks/use-deliverables";
-import { useCreateAsset } from "@/hooks/use-assets";
+import { useCreateAsset, useUpdateAsset } from "@/hooks/use-assets";
 import { useAssetConfig } from "@/hooks/use-asset-config";
 import { buildAssetId, getActiveTypes, getActivePlatforms } from "@/lib/asset-config";
+import type { AssetConfig } from "@/lib/asset-config";
 import type { ProjectAsset, ProjectStatus, ProjectAssetInsert } from "@/lib/types";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -78,12 +79,17 @@ const PROJECT_STATUSES: { value: ProjectStatus; label: string }[] = [
 function AssetCard({
   asset,
   projectId,
+  assetConfig,
 }: {
   asset: ProjectAsset;
   projectId: string;
+  assetConfig: AssetConfig;
 }) {
   const meta = asset.metadata as Record<string, unknown>;
   const wordCount = meta?.word_count as number | undefined;
+  const updateAsset = useUpdateAsset();
+  const selectedTypeConfig = assetConfig.types.find((t) => t.key === asset.asset_type);
+  const showPlatform = selectedTypeConfig?.supports_platform ?? false;
 
   const cardClass = cn(
     "rounded-lg border border-border bg-card p-3 sm:p-4 space-y-2 block overflow-hidden",
@@ -109,12 +115,52 @@ function AssetCard({
         </Badge>
       </div>
 
-      <div className="flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
-        <Badge variant="outline" className="text-[10px] px-1.5 py-0">
-          {asset.asset_type}
-        </Badge>
+      <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+        <Select
+          value={asset.asset_type}
+          onValueChange={(value) =>
+            updateAsset.mutate({ id: asset.id, updates: { asset_type: value } })
+          }
+        >
+          <SelectTrigger
+            className="h-5 w-auto gap-1 rounded-md border border-border bg-background px-1.5 text-[10px] cursor-pointer"
+            onClick={(e) => { e.preventDefault(); e.stopPropagation(); }}
+          >
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {getActiveTypes(assetConfig).map((t) => (
+              <SelectItem key={t.key} value={t.key}>
+                {t.label}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
 
-        {asset.platform && (
+        {showPlatform && (
+          <Select
+            value={asset.platform ?? ""}
+            onValueChange={(value) =>
+              updateAsset.mutate({ id: asset.id, updates: { platform: value || null } })
+            }
+          >
+            <SelectTrigger
+              className="h-5 w-auto gap-1 rounded-md border border-border bg-background px-1.5 text-[10px] cursor-pointer"
+              onClick={(e) => { e.preventDefault(); e.stopPropagation(); }}
+            >
+              <SelectValue placeholder="Platform" />
+            </SelectTrigger>
+            <SelectContent>
+              {getActivePlatforms(assetConfig).map((p) => (
+                <SelectItem key={p.key} value={p.key}>
+                  {p.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        )}
+
+        {!showPlatform && asset.platform && (
           <Badge variant="outline" className="text-[10px] px-1.5 py-0">
             {asset.platform}
           </Badge>
@@ -576,7 +622,10 @@ export default function DeliverableDetailPage() {
     );
   }
 
+  const { config: assetConfig } = useAssetConfig();
   const { project, assets } = data;
+  const productionAssets = assets.filter((a) => a.platform !== "pre-production");
+  const preProductionAssets = assets.filter((a) => a.platform === "pre-production");
   const meta = project.metadata as Record<string, unknown>;
   const subtitle = meta?.subtitle as string | undefined;
   const publishedUrl = meta?.url as string | undefined;
@@ -692,7 +741,7 @@ export default function DeliverableDetailPage() {
       </div>
 
       {/* Assets */}
-      <div className="space-y-3">
+      <div className="space-y-4">
         <div className="flex items-center justify-between">
           <h2 className="text-lg font-semibold text-foreground">
             Assets ({assets.length})
@@ -708,11 +757,37 @@ export default function DeliverableDetailPage() {
             No assets yet
           </div>
         ) : (
-          <div className="grid gap-3 sm:grid-cols-2">
-            {assets.map((asset) => (
-              <AssetCard key={asset.id} asset={asset} projectId={project.id} />
-            ))}
-          </div>
+          <>
+            {/* Production assets */}
+            {productionAssets.length > 0 && (
+              <div className="space-y-3">
+                {preProductionAssets.length > 0 && (
+                  <h3 className="text-sm font-medium text-foreground">Production</h3>
+                )}
+                <div className="grid gap-3 sm:grid-cols-2">
+                  {productionAssets.map((asset) => (
+                    <AssetCard key={asset.id} asset={asset} projectId={project.id} assetConfig={assetConfig} />
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Divider + Pre-production assets */}
+            {preProductionAssets.length > 0 && (
+              <div className="space-y-3">
+                <div className="flex items-center gap-3">
+                  <div className="h-px flex-1 bg-border" />
+                  <h3 className="text-sm font-medium text-muted-foreground shrink-0">Pre-production</h3>
+                  <div className="h-px flex-1 bg-border" />
+                </div>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  {preProductionAssets.map((asset) => (
+                    <AssetCard key={asset.id} asset={asset} projectId={project.id} assetConfig={assetConfig} />
+                  ))}
+                </div>
+              </div>
+            )}
+          </>
         )}
       </div>
     </div>
