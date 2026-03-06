@@ -590,6 +590,7 @@ export default function DeliverableDetailPage() {
   const id = params.id as string;
 
   const { data, isLoading, error } = useDeliverable(id);
+  const { config: assetConfig } = useAssetConfig();
   const deleteProject = useDeleteProject();
   const updateStatus = useUpdateProjectStatus();
   const [deleting, setDeleting] = useState(false);
@@ -622,7 +623,6 @@ export default function DeliverableDetailPage() {
     );
   }
 
-  const { config: assetConfig } = useAssetConfig();
   const { project, assets } = data;
   const productionAssets = assets.filter((a) => a.platform !== "pre-production");
   const preProductionAssets = assets.filter((a) => a.platform === "pre-production");
