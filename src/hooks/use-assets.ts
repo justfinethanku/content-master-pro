@@ -39,6 +39,7 @@ export function useAssets(projectId: string | null) {
         .from("project_assets")
         .select("*")
         .eq("project_id", projectId)
+        .is("deleted_at", null)
         .order("created_at", { ascending: true });
 
       if (error) throw error;
@@ -63,6 +64,7 @@ export function useAsset(id: string | null) {
         .from("project_assets")
         .select("*")
         .eq("id", id)
+        .is("deleted_at", null)
         .single();
 
       if (error) {
@@ -150,7 +152,7 @@ export function useUpdateAsset() {
 }
 
 /**
- * Delete an asset. If it was the last asset in the project, also delete the project.
+ * Soft-delete an asset (sets deleted_at timestamp).
  */
 export function useDeleteAsset() {
   const queryClient = useQueryClient();
@@ -162,44 +164,19 @@ export function useDeleteAsset() {
     }: {
       id: string;
       projectId: string;
-    }): Promise<{ projectDeleted: boolean }> => {
+    }): Promise<void> => {
       const supabase = createClient();
 
-      // Delete the asset
       const { error } = await supabase
         .from("project_assets")
-        .delete()
+        .update({ deleted_at: new Date().toISOString() })
         .eq("id", id);
 
       if (error) throw error;
-
-      // Check if the project has any remaining assets
-      const { count, error: countError } = await supabase
-        .from("project_assets")
-        .select("id", { count: "exact", head: true })
-        .eq("project_id", projectId);
-
-      if (countError) throw countError;
-
-      // If no assets remain, delete the orphaned project
-      if (count === 0) {
-        const { error: deleteProjectError } = await supabase
-          .from("projects")
-          .delete()
-          .eq("id", projectId);
-
-        if (deleteProjectError) throw deleteProjectError;
-        return { projectDeleted: true };
-      }
-
-      return { projectDeleted: false };
     },
-    onSuccess: ({ projectDeleted }, { projectId }) => {
+    onSuccess: (_, { projectId }) => {
       queryClient.invalidateQueries({ queryKey: assetKeys.list(projectId) });
-      if (projectDeleted) {
-        queryClient.invalidateQueries({ queryKey: projectKeys.all });
-        queryClient.invalidateQueries({ queryKey: deliverableKeys.all });
-      }
+      queryClient.invalidateQueries({ queryKey: deliverableKeys.all });
     },
   });
 }

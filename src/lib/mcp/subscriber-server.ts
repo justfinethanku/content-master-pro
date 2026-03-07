@@ -212,6 +212,7 @@ You have tools to:
         .from("project_assets")
         .select("id, asset_id, name, content, status, metadata, created_at")
         .eq("asset_type", "promptkit")
+        .is("deleted_at", null)
         .or(`name.ilike.%${query}%,content.ilike.%${query}%`)
         .order("created_at", { ascending: false })
         .limit(limit);
@@ -269,6 +270,7 @@ You have tools to:
         )
         .eq("id", id)
         .eq("asset_type", "promptkit")
+        .is("deleted_at", null)
         .single();
 
       if (error)
@@ -310,6 +312,7 @@ You have tools to:
         .from("project_assets")
         .select("id, asset_id, name, status, metadata, created_at")
         .eq("asset_type", "promptkit")
+        .is("deleted_at", null)
         .order("created_at", { ascending: false })
         .limit(limit);
 
