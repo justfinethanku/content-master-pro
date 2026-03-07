@@ -266,6 +266,7 @@ export interface ProjectAsset {
   published_at: string | null;
   locked_by: string | null;
   locked_at: string | null;
+  deleted_at: string | null;
   created_at: string;
   updated_at: string;
 }

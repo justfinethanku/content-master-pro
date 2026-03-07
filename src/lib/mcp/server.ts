@@ -212,6 +212,7 @@ When you spot a trend, content gap, or interesting angle during analysis:
         .from("project_assets")
         .select("id, asset_id, name, asset_type, platform, variant, status, version, content, created_at, updated_at")
         .eq("project_id", id)
+        .is("deleted_at", null)
         .order("created_at", { ascending: true });
 
       const result = {
@@ -246,6 +247,7 @@ When you spot a trend, content gap, or interesting angle during analysis:
         .from("project_assets")
         .select("id, asset_id, name, asset_type, platform, variant, status, version, content, metadata, created_at, updated_at, project_id")
         .eq("id", id)
+        .is("deleted_at", null)
         .single();
 
       if (error)
@@ -272,6 +274,7 @@ When you spot a trend, content gap, or interesting angle during analysis:
         .from("project_assets")
         .select("id, asset_id, name, content, status, metadata, created_at")
         .eq("asset_type", "promptkit")
+        .is("deleted_at", null)
         .or(`name.ilike.%${query}%,content.ilike.%${query}%`)
         .order("created_at", { ascending: false })
         .limit(limit);
@@ -532,6 +535,7 @@ When you spot a trend, content gap, or interesting angle during analysis:
         .from("project_assets")
         .select("id, name, content, version, status")
         .eq("id", asset_id)
+        .is("deleted_at", null)
         .single();
 
       if (fetchErr || !current)

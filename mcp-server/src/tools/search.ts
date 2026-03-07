@@ -111,6 +111,7 @@ export function registerSearchTools(server: McpServer) {
         .from("project_assets")
         .select("id, asset_id, name, asset_type, platform, variant, status, version, content, metadata, created_at, updated_at, project_id")
         .eq("id", id)
+        .is("deleted_at", null)
         .single();
 
       if (error) {
@@ -151,6 +152,7 @@ export function registerSearchTools(server: McpServer) {
         .from("project_assets")
         .select("id, asset_id, name, content, status, metadata, created_at")
         .eq("asset_type", "promptkit")
+        .is("deleted_at", null)
         .or(`name.ilike.%${query}%,content.ilike.%${query}%`)
         .order("created_at", { ascending: false })
         .limit(limit);

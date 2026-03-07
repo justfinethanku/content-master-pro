@@ -509,27 +509,14 @@ function AssetEditorInner({
     }
   }, [currentContent, promptKits, projectId, generate, resetGenerate, queryClient, showToast]);
 
-  // Delete asset mutation
+  // Soft-delete asset mutation (sets deleted_at, does NOT cascade to companions)
   const deleteMutation = useMutation({
     mutationFn: async () => {
       const supabase = createClient();
 
-      // Delete associated companion assets (prompt kits + guides) when deleting a post
-      if (canHavePreamble) {
-        const companionIds = [...promptKits, ...guides].map((a) => a.id);
-        if (companionIds.length > 0) {
-          const { error: companionError } = await supabase
-            .from("project_assets")
-            .delete()
-            .in("id", companionIds);
-          if (companionError) throw companionError;
-        }
-      }
-
-      // Delete the asset itself (asset_versions cascade-delete via FK)
       const { error } = await supabase
         .from("project_assets")
-        .delete()
+        .update({ deleted_at: new Date().toISOString() })
         .eq("id", asset.id);
       if (error) throw error;
     },
@@ -926,15 +913,7 @@ function AssetEditorInner({
               <AlertDialogHeader>
                 <AlertDialogTitle>Delete this asset?</AlertDialogTitle>
                 <AlertDialogDescription>
-                  {hasPromptKits || guides.length > 0 ? (
-                    <>
-                      This will permanently delete <strong>{asset.name}</strong> and its companion assets ({[hasPromptKits && "prompt kit", guides.length > 0 && "guide"].filter(Boolean).join(", ")}). All versions will be lost. This cannot be undone.
-                    </>
-                  ) : (
-                    <>
-                      This will permanently delete <strong>{asset.name}</strong> and all its versions. This cannot be undone.
-                    </>
-                  )}
+                  This will delete <strong>{asset.name}</strong>. It can be restored from the database if needed.
                 </AlertDialogDescription>
               </AlertDialogHeader>
               <AlertDialogFooter>

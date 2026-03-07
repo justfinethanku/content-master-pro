@@ -78,7 +78,8 @@ export function useDeliverables(filters?: DeliverableFilters) {
       const { data: assets } = await supabase
         .from("project_assets")
         .select("project_id, asset_type")
-        .in("project_id", projectUuids);
+        .in("project_id", projectUuids)
+        .is("deleted_at", null);
 
       // Build a map of project_id -> { count, types }
       const assetMap = new Map<
@@ -141,6 +142,7 @@ export function useDeliverable(projectId: string | null) {
         .from("project_assets")
         .select("*")
         .eq("project_id", projectId)
+        .is("deleted_at", null)
         .order("asset_type", { ascending: true });
 
       if (assetsError) throw assetsError;
@@ -169,6 +171,7 @@ export function useDeliverableAsset(assetId: string | null) {
         .from("project_assets")
         .select("*")
         .eq("id", assetId)
+        .is("deleted_at", null)
         .single();
 
       if (error) {
@@ -205,6 +208,7 @@ export function useProjectAssetsByType(
         .select("*")
         .eq("project_id", projectId)
         .eq("asset_type", assetType)
+        .is("deleted_at", null)
         .order("created_at", { ascending: true });
 
       if (error) throw error;
@@ -347,7 +351,8 @@ export function useCreatePromptKitAsset() {
         .from("project_assets")
         .select("*", { count: "exact", head: true })
         .eq("project_id", projectId)
-        .eq("asset_type", "promptkit");
+        .eq("asset_type", "promptkit")
+        .is("deleted_at", null);
 
       const suffix = (count ?? 0) + 1;
       const assetId = `${project.project_id}_promptkit_${suffix}`;
@@ -430,6 +435,7 @@ export function useCalendarProjects(filters: CalendarFilters) {
         .from("project_assets")
         .select("project_id, asset_type, content")
         .in("project_id", projectUuids)
+        .is("deleted_at", null)
         .order("created_at", { ascending: true });
 
       // Build maps: project_id -> first post content, project_id -> asset types
@@ -528,6 +534,7 @@ export function useUnscheduledProjects() {
         .from("project_assets")
         .select("project_id, asset_type, content")
         .in("project_id", projectUuids)
+        .is("deleted_at", null)
         .order("created_at", { ascending: true });
 
       const summaryMap = new Map<string, string>();
